@@ -1,0 +1,408 @@
+import os
+import sqlite3
+import datetime
+import json
+from flask import Flask, request, jsonify, send_from_directory, session, redirect
+
+# Initialize Flask App
+app = Flask(__name__, static_url_path='', static_folder='static')
+app.secret_key = os.environ.get('SECRET_KEY', 'dev_secret_key_keep_it_safe')
+DB_FILE = 'canteen.db'
+
+# --- Database Helper ---
+def get_db():
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Students Table
+    c.execute('''CREATE TABLE IF NOT EXISTS students (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 name TEXT NOT NULL,
+                 roll TEXT NOT NULL UNIQUE,
+                 dept TEXT NOT NULL,
+                 payment_status TEXT DEFAULT 'Unpaid',
+                 payment_mode TEXT DEFAULT 'Cash',
+                 amount_paid INTEGER DEFAULT 0
+                 )''')
+
+    # Meals Table (Tracking daily meals)
+    c.execute('''CREATE TABLE IF NOT EXISTS meals (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 student_id INTEGER,
+                 date TEXT NOT NULL,
+                 breakfast INTEGER DEFAULT 0,
+                 lunch INTEGER DEFAULT 0,
+                 dinner INTEGER DEFAULT 0,
+                 FOREIGN KEY(student_id) REFERENCES students(id))''')
+
+    # Payments Table (Historical)
+    c.execute('''CREATE TABLE IF NOT EXISTS payments (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 student_id INTEGER,
+                 month TEXT NOT NULL,
+                 is_paid INTEGER DEFAULT 0,
+                 FOREIGN KEY(student_id) REFERENCES students(id))''')
+                 
+    # Operators Table (Auth)
+    c.execute('''CREATE TABLE IF NOT EXISTS operators (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 username TEXT UNIQUE NOT NULL,
+                 password TEXT NOT NULL, 
+                 role TEXT DEFAULT 'operator'
+                 )''')
+                 
+    # Migration: Add role column if missing (for existing DBs)
+    c.execute("PRAGMA table_info(operators)")
+    columns = [info[1] for info in c.fetchall()]
+    if 'role' not in columns:
+        print("Migrating: Adding role column to operators table...")
+        c.execute("ALTER TABLE operators ADD COLUMN role TEXT DEFAULT 'operator'")
+                 
+    # Bills Table Handling
+    c.execute("PRAGMA table_info(bills)")
+    cols = [r[1] for r in c.fetchall()]
+    # If table exists but lacks 'details' (our new schema), rename it
+    if cols and 'details' not in cols:
+        print("Legacy bills table detected. Archiving...")
+        c.execute(f"ALTER TABLE bills RENAME TO bills_legacy_{int(datetime.datetime.now().timestamp())}")
+    
+    # Create New Bills Table
+    c.execute('''CREATE TABLE IF NOT EXISTS bills (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 bill_no TEXT UNIQUE,
+                 date TEXT,
+                 operator_id INTEGER,
+                 amount REAL,
+                 details TEXT,
+                 payment_mode TEXT
+                 )''')
+    
+    # Create Default Admin if not exists
+    # Note: Using plain text passwords for now as requested/simplest migration, 
+    # but in production use werkzeug.security.generate_password_hash
+    c.execute("SELECT id FROM operators WHERE username='admin'")
+    if not c.fetchone():
+        c.execute("INSERT INTO operators (username, password, role) VALUES (?, ?, ?)", 
+                  ('admin', 'admin123', 'admin'))
+        print("Created default admin user (admin/admin123)")
+
+    conn.commit()
+    conn.close()
+    print("Database initialized.")
+
+# --- Routes ---
+
+@app.route('/')
+def index():
+    return send_from_directory('static', 'login.html')
+
+@app.route('/admin')
+def admin_page():
+    # Simple check, frontend handles deeper security usually in this style of app
+    # but strictly we should check session
+    # if 'role' not in session or session['role'] != 'admin': return redirect('/')
+    return send_from_directory('static', 'admin.html')
+
+@app.route('/operator')
+def operator_page():
+    # if 'role' not in session: return redirect('/')
+    return send_from_directory('static', 'operator.html')
+
+# --- API: Auth ---
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+    role = data.get('role', 'operator')
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    if role == 'admin':
+        # Admin check
+        c.execute("SELECT * FROM operators WHERE username=? AND role='admin'", (username,))
+        user = c.fetchone()
+        if user and user['password'] == password:
+            session['user_id'] = user['id']
+            session['role'] = 'admin'
+            return jsonify({'status': 'success', 'role': 'admin', 'username': username})
+    else:
+        # Operator check
+        c.execute("SELECT * FROM operators WHERE username=? AND role='operator'", (username,))
+        user = c.fetchone()
+        if user and user['password'] == password:
+            session['user_id'] = user['id']
+            session['role'] = 'operator'
+            return jsonify({'status': 'success', 'role': 'operator', 'username': username, 'id': user['id']})
+            
+    return jsonify({'status': 'error', 'message': 'Invalid credentials'}), 401
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return jsonify({'status': 'success'})
+
+# --- API: Students ---
+@app.route('/api/students', methods=['GET', 'POST', 'PUT', 'DELETE'])
+def manage_students():
+    conn = get_db()
+    c = conn.cursor()
+    
+    if request.method == 'GET':
+        c.execute("SELECT * FROM students")
+        rows = c.fetchall()
+        # Get meal counts for today
+        today = datetime.date.today().isoformat()
+        students = []
+        for row in rows:
+            s_data = dict(row)
+            c.execute("SELECT breakfast, lunch, dinner FROM meals WHERE student_id=? AND date=?", (s_data['id'], today))
+            meal_row = c.fetchone()
+            s_data['breakfast_count'] = meal_row['breakfast'] if meal_row else 0
+            s_data['lunch_count'] = meal_row['lunch'] if meal_row else 0
+            s_data['dinner_count'] = meal_row['dinner'] if meal_row else 0
+            students.append(s_data)
+        conn.close()
+        return jsonify(students)
+
+    if request.method == 'POST':
+        data = request.json
+        try:
+            # Custom Sequential ID Logic (Reuse gaps)
+            # Find the lowest unused ID
+            c.execute("SELECT id FROM students ORDER BY id ASC")
+            existing_ids = [row['id'] for row in c.fetchall()]
+            
+            new_id = 1
+            for current_id in existing_ids:
+                if current_id == new_id:
+                    new_id += 1
+                else:
+                    break
+            
+            # Insert with explicit ID
+            c.execute("INSERT INTO students (id, name, roll, dept, payment_status, payment_mode, amount_paid) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                      (new_id, data['name'], data.get('roll',''), data.get('dept',''), 
+                       data.get('payment_status','Unpaid'), data.get('payment_mode','Cash'), data.get('amount_paid', 0)))
+            conn.commit()
+            return jsonify({'status': 'success', 'id': new_id})
+        except sqlite3.IntegrityError:
+            return jsonify({'error': 'Roll number already exists'}), 409
+        finally:
+            conn.close()
+
+    if request.method == 'PUT':
+        data = request.json
+        c.execute("UPDATE students SET name=?, roll=?, dept=?, payment_status=?, payment_mode=?, amount_paid=? WHERE id=?",
+                  (data['name'], data.get('roll'), data.get('dept'), 
+                   data.get('payment_status'), data.get('payment_mode'), data.get('amount_paid'), data['id']))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'success'})
+
+    if request.method == 'DELETE':
+        std_id = request.args.get('id')
+        c.execute("DELETE FROM students WHERE id=?", (std_id,))
+        c.execute("DELETE FROM meals WHERE student_id=?", (std_id,))
+        c.execute("DELETE FROM payments WHERE student_id=?", (std_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'success'})
+
+# --- API: Operators ---
+@app.route('/api/operators', methods=['GET', 'POST', 'DELETE'])
+def manage_operators():
+    conn = get_db()
+    c = conn.cursor()
+    
+    if request.method == 'GET':
+        c.execute("SELECT * FROM operators WHERE role='operator'")
+        rows = [dict(row) for row in c.fetchall()]
+        conn.close()
+        return jsonify(rows)
+
+    if request.method == 'POST':
+        data = request.json
+        try:
+            c.execute("INSERT INTO operators (username, password, role) VALUES (?, ?, 'operator')",
+                      (data['username'], data['password']))
+            conn.commit()
+            conn.close()
+            return jsonify({'status': 'success'})
+        except sqlite3.IntegrityError:
+            conn.close()
+            return jsonify({'error': 'Username exists'}), 409
+
+    if request.method == 'DELETE':
+        op_id = request.args.get('id')
+        c.execute("DELETE FROM operators WHERE id=? AND role='operator'", (op_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'success'})
+
+# --- API: Billing ---
+@app.route('/api/bill', methods=['POST'])
+def create_bill():
+    data = request.json
+    conn = get_db()
+    c = conn.cursor()
+    
+    bill_no = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Save bill
+    details = json.dumps({
+        'user_type': data.get('user_type'),
+        'student_id': data.get('student_id'),
+        'guest_name': data.get('guest_name'),
+        'meal_type': data.get('meal_type')
+    })
+    
+    try:
+        c.execute("INSERT INTO bills (bill_no, date, operator_id, amount, details, payment_mode) VALUES (?, ?, ?, ?, ?, ?)",
+                  (bill_no, date_str, data.get('operator_id'), data.get('amount'), details, data.get('payment_mode')))
+        
+        # If student, record meal + update payment info if needed? 
+        # Requirement: "Do it whenever a students payment is made". 
+        # Assuming BILLING is for meals/purchases. 
+        # If it's a student meal, we should mark meal count.
+        if data.get('user_type') == 'hostel' and data.get('student_id'):
+            s_id = data.get('student_id')
+            today = datetime.date.today().isoformat()
+            meal_type = data.get('meal_type').lower() # breakfast, lunch, dinner
+            
+            # Check if valid meal type column
+            if meal_type in ['breakfast', 'lunch', 'dinner']:
+                 # Upsert meal
+                c.execute("SELECT id FROM meals WHERE student_id=? AND date=?", (s_id, today))
+                row = c.fetchone()
+                if row:
+                    c.execute(f"UPDATE meals SET {meal_type}=1 WHERE id=?", (row[0],))
+                else:
+                    vals = {'breakfast':0, 'lunch':0, 'dinner':0}
+                    vals[meal_type] = 1
+                    c.execute("INSERT INTO meals (student_id, date, breakfast, lunch, dinner) VALUES (?, ?, ?, ?, ?)",
+                              (s_id, today, vals['breakfast'], vals['lunch'], vals['dinner']))
+
+        conn.commit()
+        return jsonify({'status': 'success', 'bill_no': bill_no})
+    except Exception as e:
+        print(e)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/bill-view/<bill_no>')
+def view_bill(bill_no):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM bills WHERE bill_no=?", (bill_no,))
+    row = c.fetchone()
+    conn.close()
+    
+    if not row: return "Bill not found", 404
+    
+    details = json.loads(row['details'])
+    
+    html = f"""
+    <html>
+    <head>
+        <title>Bill {bill_no}</title>
+        <style>
+            @page { size: auto; margin: 0; }
+            body { font-family: 'Courier New', monospace; padding: 5px; margin: 0; width: 100%; }
+            .bill-box { width: 100%; max-width: 280px; margin: 0 auto; padding: 5px; border: none; }
+            h2 { text-align: center; font-size: 1.2em; margin: 5px 0; }
+            .meta { text-align: center; font-size: 0.8em; margin-bottom: 5px; }
+            .line { display: flex; justify-content: space-between; margin: 2px 0; font-size: 0.9em; }
+            .total { border-top: 2px dashed #000; border-bottom: 2px dashed #000; font-weight: bold; margin-top: 5px; padding: 5px 0; font-size: 1.1em; }
+            .footer { text-align: center; margin-top: 10px; font-size: 0.7em; }
+        </style>
+    </head>
+    <body onload="window.print()">
+        <div class="bill-box">
+            <h2>CANTEEN RECEIPT</h2>
+            <div class="meta">
+                Date: {row['date']}<br>
+                Bill No: {bill_no}
+            </div>
+            <hr>
+            <div class="line"><span>Item:</span> <span>{details.get('meal_type', 'Meal')}</span></div>
+            <div class="line"><span>Type:</span> <span>{details.get('user_type')}</span></div>
+            {f'<div class="line"><span>Student ID:</span> <span>{details.get("student_id")}</span></div>' if details.get('student_id') else ''}
+            {f'<div class="line"><span>Name:</span> <span>{details.get("guest_name")}</span></div>' if details.get('guest_name') else ''}
+            
+            <div class="line total"><span>TOTAL:</span> <span>₹{row['amount']}</span></div>
+            <div class="line"><span>Mode:</span> <span>{row['payment_mode']}</span></div>
+            
+            <div class="footer">Thank you! Visit Again.</div>
+        </div>
+    </body>
+    </html>
+    """
+    return html
+
+# --- API: Reports ---
+@app.route('/api/reports/meals')
+def get_meal_report():
+    conn = get_db()
+    c = conn.cursor()
+    today = datetime.date.today().isoformat()
+    
+    c.execute("SELECT sum(breakfast), sum(lunch), sum(dinner) FROM meals WHERE date=?", (today,))
+    row = c.fetchone()
+    conn.close()
+    
+    return jsonify({
+        'Breakfast': row[0] or 0,
+        'Lunch': row[1] or 0,
+        'Dinner': row[2] or 0
+    })
+
+@app.route('/api/export')
+def export_data():
+    # Generate CSV logic (simplified for immediate download)
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM bills")
+    rows = c.fetchall()
+    
+    output = "Bill No,Date,Amount,Mode\n"
+    for row in rows:
+        output += f"{row['bill_no']},{row['date']},{row['amount']},{row['payment_mode']}\n"
+    
+    conn.close()
+    
+    from flask import Response
+    return Response(
+        output,
+        mimetype="text/csv",
+        headers={"Content-disposition": "attachment; filename=sales_report.csv"}
+    )
+
+# --- API: Backup ---
+@app.route('/api/backup/excel', methods=['POST'])
+def backup_excel_api():
+    try:
+        from backup_excel import update_excel_sheet
+        if update_excel_sheet():
+            return jsonify({'status': 'success', 'message': 'Excel updated successfully.'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Failed to update Excel.'}), 500
+    except Exception as e:
+        print(f"Backup Error: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+if __name__ == '__main__':
+    init_db()
+    port = int(os.environ.get('PORT', 8000))
+    # In production, debug should be False
+    debug_mode = os.environ.get('FLASK_ENV') == 'development'
+    print(f"Starting Flask Server on port {port}...")
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)

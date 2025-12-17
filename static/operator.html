@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Operator Dashboard - Canteen</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <div id="operator-dashboard" class="container">
+        <header>
+            <h2>Operator: <span id="op-username-display"></span></h2>
+            <button onclick="logout()" class="danger-btn">Logout</button>
+        </header>
+
+        <div class="billing-container">
+            <div class="billing-form">
+                <h3>New Order</h3>
+
+                <div class="user-type-toggle">
+                    <label><input type="radio" name="userType" value="hostel" checked onchange="toggleUserType()">
+                        Hostel Student</label>
+                    <label><input type="radio" name="userType" value="staff" onchange="toggleUserType()">
+                        College Staff</label>
+                    <label><input type="radio" name="userType" value="normal" onchange="toggleUserType()"> Normal
+                        Person</label>
+                </div>
+
+                <!-- Hostel Student Inputs with Search -->
+                <div id="input-hostel">
+                    <label>Search Student (Name / ID):</label>
+                    <input list="student-list" id="bill-student-search" placeholder="Type to search..."
+                        autocomplete="off" autofocus>
+                    <datalist id="student-list"></datalist>
+                    <input type="hidden" id="bill-student-id">
+                </div>
+
+                <!-- College Staff Inputs -->
+                <div id="input-staff" class="hidden">
+                    <label>Staff Name:</label>
+                    <input type="text" id="bill-staff-name" placeholder="Enter Staff Name">
+                </div>
+
+                <!-- Normal Person Inputs -->
+                <div id="input-normal" class="hidden">
+                    <label>Guest Name (Optional):</label>
+                    <input type="text" id="bill-guest-name">
+                </div>
+
+                <div class="meal-selection">
+                    <label>Meal Type:</label>
+                    <select id="bill-meal-type">
+                        <option value="Breakfast">Breakfast</option>
+                        <option value="Lunch">Lunch</option>
+                        <option value="Dinner">Dinner</option>
+                    </select>
+
+                    <label>Amount (₹):</label>
+                    <input type="number" id="bill-amount" value="50">
+
+                    <label>Payment Mode:</label>
+                    <select id="bill-payment-mode">
+                        <option value="Cash">Cash</option>
+                        <option value="UPI">UPI</option>
+                    </select>
+                </div>
+
+                <button onclick="generateBill()" class="primary-btn large-btn">PRINT BILL</button>
+            </div>
+
+            <div class="live-stats">
+                <h3>Today's Count</h3>
+                <div id="op-meal-stats">
+                    Loading stats...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js?v=3"></script>
+</body>
+
+</html>

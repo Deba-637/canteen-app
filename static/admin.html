@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Canteen</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <div id="admin-dashboard" class="container">
+        <header>
+            <h2>Admin Dashboard</h2>
+            <button onclick="logout()" class="danger-btn">Logout</button>
+        </header>
+
+        <nav class="tabs">
+            <button onclick="showTab('admin-students')" class="active">Students</button>
+            <button onclick="showTab('admin-operators')">Operators</button>
+            <button onclick="showTab('admin-reports')">Reports</button>
+        </nav>
+
+        <section id="admin-students" class="tab-content">
+            <h3>Manage Hostel Students</h3>
+            <div class="controls">
+                <input type="text" id="admin-student-search" placeholder="Search (Name / ID / Roll)"
+                    style="width: 200px; border: 2px solid var(--primary-color);">
+                <input type="hidden" id="edit-std-id">
+                <input type="text" id="new-std-name" placeholder="Student Name">
+                <input type="text" id="new-std-roll" placeholder="Roll No" style="width: 100px;">
+                <select id="new-std-status">
+                    <option value="Unpaid">Unpaid</option>
+                    <option value="Half Paid">Half Paid</option>
+                    <option value="Full Paid">Full Paid</option>
+                </select>
+                <select id="new-std-mode">
+                    <option value="Cash">Cash</option>
+                    <option value="UPI">UPI</option>
+                </select>
+                <input type="text" id="new-std-branch" placeholder="Branch (e.g. CSE)" style="width: 120px;">
+                <input type="number" id="new-std-amount" placeholder="Amount" style="width: 100px;">
+                <button onclick="addStudent()" id="btn-add-student" class="primary-btn">Add Student</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Name</th>
+                        <th>Roll No</th>
+                        <th>Branch</th>
+                        <th>B / L / D Count</th>
+                        <th>Status</th>
+                        <th>Paid (₹)</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="admin-students-list"></tbody>
+            </table>
+        </section>
+
+        <section id="admin-operators" class="tab-content">
+            <h3>Manage Operators</h3>
+            <div class="controls">
+                <input type="text" id="new-op-user" placeholder="Username">
+                <input type="password" id="new-op-pass" placeholder="Password">
+                <button onclick="addOperator()" class="primary-btn">Add Operator</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Username</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="admin-operators-list"></tbody>
+            </table>
+        </section>
+
+        <section id="admin-reports" class="tab-content">
+            <h3>System Reports</h3>
+            <div class="report-cards">
+                <div class="card">
+                    <h4>Today's Meals</h4>
+                    <div id="admin-meal-stats">Loading...</div>
+                </div>
+                <div class="card">
+                    <h4>Data Export</h4>
+                    <p>Download all bill records or update Hostel Excel sheet.</p>
+                    <button onclick="exportCSV()" class="primary-btn"
+                        style="background:#27ae60; margin-bottom: 10px;">Download CSV</button>
+                    <button onclick="updateExcel()" class="primary-btn" style="background:#8e44ad;">Update Hostel
+                        Excel</button>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="js/app.js?v=6"></script>
+</body>
+
+</html>

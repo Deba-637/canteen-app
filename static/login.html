@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>College Canteen System</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <!-- Login Section -->
+    <div class="login-wrapper">
+        <div class="login-container">
+            <header class="login-header">
+                <h1>College Canteen</h1>
+                <p>Please login to continue</p>
+            </header>
+            <div class="login-box">
+                <div class="role-switch">
+                    <button onclick="setLoginRole('operator')" id="btn-role-operator"
+                        class="role-btn active">Operator</button>
+                    <button onclick="setLoginRole('admin')" id="btn-role-admin" class="role-btn">Admin</button>
+                </div>
+                <div class="input-group">
+                    <input type="text" id="login-username" placeholder="Username" autocomplete="off">
+                </div>
+                <div class="input-group">
+                    <input type="password" id="login-password" placeholder="Password">
+                </div>
+                <button onclick="handleLogin()" class="primary-btn login-btn">Login</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script>
+        // Clear session on login page load
+        sessionStorage.clear();
+    </script>
+</body>
+
+</html>

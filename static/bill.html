@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bill Receipt</title>
+    <style>
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            width: 300px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            border-bottom: 2px dashed #000;
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+
+        .divider {
+            border-bottom: 1px dashed #000;
+            margin: 10px 0;
+        }
+
+        .total {
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.8rem;
+        }
+
+        /* Print Settings */
+        @media print {
+            @page {
+                margin: 0;
+            }
+
+            body {
+                margin: 0.5cm;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h3>COLLEGE CANTEEN</h3>
+        <p>Receipt</p>
+    </div>
+
+    <div id="bill-content">
+        Loading...
+    </div>
+
+    <div class="footer">
+        Thank You! Visit Again.
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Get Bill ID from URL path /bill-view/<id>
+            const pathParts = window.location.pathname.split('/');
+            const billId = pathParts[pathParts.length - 1];
+
+            if (billId) {
+                try {
+                    const res = await fetch(`/api/bills/${billId}`);
+                    const data = await res.json();
+
+                    if (data.status && data.status === 'error') {
+                        document.getElementById('bill-content').textContent = "Error: " + data.message;
+                        return;
+                    }
+
+                    // Render
+                    const html = `
+                        <div class="row"><span>Bill No:</span> <span>${data.bill_no}</span></div>
+                        <div class="row"><span>Date:</span> <span>${data.date_time}</span></div>
+                        <div class="divider"></div>
+                        <div class="row"><span>Type:</span> <span>${data.user_type.toUpperCase()}</span></div>
+                        <div class="row"><span>Name:</span> <span>${data.student_name ? data.student_name + ' (ID: ' + data.student_id + ')' : (data.guest_name || 'ID: ' + data.student_id)}</span></div>
+                        <div class="row"><span>Meal:</span> <span>${data.meal_type}</span></div>
+                        <div class="divider"></div>
+                        <div class="row total"><span>Amount:</span> <span>₹${data.amount}</span></div>
+                        <div class="row"><span>Mode:</span> <span>${data.payment_mode}</span></div>
+                        <div class="divider"></div>
+                        <div class="row"><span>Operator ID:</span> <span>${data.operator_id}</span></div>
+                    `;
+                    document.getElementById('bill-content').innerHTML = html;
+
+                    // Print automatically
+                    setTimeout(() => {
+                        window.print();
+                    }, 500);
+
+                } catch (e) {
+                    document.getElementById('bill-content').textContent = "Error loading bill.";
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>
