@@ -61,6 +61,19 @@ def init_db():
     conn.close()
     print("Database initialized.")
 
+import traceback
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    # Pass through HTTP errors
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return e
+        
+    print(f"Global Exception: {e}")
+    print(traceback.format_exc())
+    return jsonify({"status": "error", "message": f"Global Server Error: {str(e)}", "trace": traceback.format_exc()}), 500
+
 # --- Routes ---
 
 @app.route('/')
@@ -81,6 +94,8 @@ def bill_view(bill_id):
 
 @app.route('/api/login', methods=['POST'])
 def login():
+    print(f"Login Request Headers: {request.headers}")
+    print(f"Login Request Data: {request.get_data(as_text=True)}")
     try:
         data = request.json
         if not data:
