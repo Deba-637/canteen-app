@@ -67,9 +67,19 @@ import traceback
 def handle_exception(e):
     # Pass through HTTP errors
     from werkzeug.exceptions import HTTPException
+    
+    # If it's a 500 error (wrapped exception), we want the original traceback
     if isinstance(e, HTTPException):
-        return e
-        
+        # For non-500 HTTP errors (404, 401 etc), return JSON too for consistency
+        response = e.get_response()
+        response.data = json.dumps({
+            "code": e.code,
+            "name": e.name,
+            "description": e.description,
+        })
+        response.content_type = "application/json"
+        return response
+
     print(f"Global Exception: {e}")
     print(traceback.format_exc())
     return jsonify({"status": "error", "message": f"Global Server Error: {str(e)}", "trace": traceback.format_exc()}), 500
