@@ -81,31 +81,38 @@ def bill_view(bill_id):
 
 @app.route('/api/login', methods=['POST'])
 def login():
-    data = request.json
-    role = data.get('role')
-    username = data.get('username')
-    password = data.get('password')
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"status": "error", "message": "Invalid JSON data"}), 400
+            
+        role = data.get('role')
+        username = data.get('username')
+        password = data.get('password')
 
-    if role == 'admin':
-        # Hardcoded Admin for simplicity as requested
-        if username == 'admin' and password == 'admin123':
-            return jsonify({"status": "success", "role": "admin"})
-        else:
-            return jsonify({"status": "error", "message": "Invalid Admin Credentials"}), 401
-    
-    elif role == 'operator':
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute("SELECT * FROM operators WHERE username=? AND password=?", (username, password))
-        user = c.fetchone()
-        conn.close()
+        if role == 'admin':
+            # Hardcoded Admin for simplicity as requested
+            if username == 'admin' and password == 'admin123':
+                return jsonify({"status": "success", "role": "admin"})
+            else:
+                return jsonify({"status": "error", "message": "Invalid Admin Credentials"}), 401
         
-        if user:
-            return jsonify({"status": "success", "role": "operator", "id": user['id'], "username": user['username']})
-        else:
-            return jsonify({"status": "error", "message": "Invalid Operator Credentials"}), 401
+        elif role == 'operator':
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute("SELECT * FROM operators WHERE username=? AND password=?", (username, password))
+            user = c.fetchone()
+            conn.close()
+            
+            if user:
+                return jsonify({"status": "success", "role": "operator", "id": user['id'], "username": user['username']})
+            else:
+                return jsonify({"status": "error", "message": "Invalid Operator Credentials"}), 401
 
-    return jsonify({"status": "error", "message": "Invalid Role"}), 400
+        return jsonify({"status": "error", "message": "Invalid Role"}), 400
+    except Exception as e:
+        print(f"Login Error: {e}")
+        return jsonify({"status": "error", "message": "Login server error"}), 500
 
 # --- Student Management (Admin) ---
 
@@ -302,6 +309,8 @@ def export_bills():
         download_name=f'bills_export_{datetime.datetime.now().strftime("%Y%m%d")}.csv'
     )
 
+# Initialize DB on startup (ensures tables exist for Gunicorn)
+init_db()
+
 if __name__ == '__main__':
-    init_db()
     app.run(port=5000, debug=True)
