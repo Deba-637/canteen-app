@@ -112,7 +112,7 @@ def login():
         return jsonify({"status": "error", "message": "Invalid Role"}), 400
     except Exception as e:
         print(f"Login Error: {e}")
-        return jsonify({"status": "error", "message": "Login server error"}), 500
+        return jsonify({"status": "error", "message": f"Login server error: {str(e)}"}), 500
 
 # --- Student Management (Admin) ---
 
@@ -310,7 +310,11 @@ def export_bills():
     )
 
 # Initialize DB on startup (ensures tables exist for Gunicorn)
-init_db()
+# Use try/except to avoid crashing the worker if FS is read-only (though unlikely on Railway ephemeral)
+try:
+    init_db()
+except Exception as e:
+    print(f"Startup DB Init Error: {e}")
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
