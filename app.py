@@ -11,7 +11,12 @@ import io
 import hashlib
 
 app = Flask(__name__, static_folder='static', static_url_path='')
-DB_FILE = 'canteen.db'
+
+# Railway Persistent Storage: Use /app/data if available
+if os.path.exists('/app/data'):
+    DB_FILE = '/app/data/canteen.db'
+else:
+    DB_FILE = 'canteen.db'
 
 def get_db_connection():
     if sqlite3 is None:
