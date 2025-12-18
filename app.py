@@ -97,7 +97,13 @@ def login():
             else:
                 return jsonify({"status": "error", "message": "Invalid Admin Credentials"}), 401
         
+        
         elif role == 'operator':
+            try:
+                init_db() # Ensure DB/Tables vary time
+            except: 
+                pass # If it fails, next step will fail and be caught
+
             conn = get_db_connection()
             c = conn.cursor()
             c.execute("SELECT * FROM operators WHERE username=? AND password=?", (username, password))
@@ -310,11 +316,8 @@ def export_bills():
     )
 
 # Initialize DB on startup (ensures tables exist for Gunicorn)
-# Use try/except to avoid crashing the worker if FS is read-only (though unlikely on Railway ephemeral)
-try:
-    init_db()
-except Exception as e:
-    print(f"Startup DB Init Error: {e}")
+# Removed global init to prevent boot crash. Will init lazily in routes as needed.
 
 if __name__ == '__main__':
+    init_db()
     app.run(port=5000, debug=True)
