@@ -47,15 +47,6 @@ function initLogin() {
                 body: JSON.stringify({ role: loginRole, username: user, password: pass })
             });
 
-            // Debugging: Check status first
-            if (!res.ok) {
-                const text = await res.text();
-                alert(`Server Error (${res.status}): ${text.substring(0, 100)}...`);
-                return;
-            }
-
-            const data = await res.json();
-
             if (data.status === 'success') {
                 sessionStorage.setItem('canteen_role', data.role);
                 if (data.role === 'operator') {
@@ -70,7 +61,7 @@ function initLogin() {
             }
         } catch (e) {
             console.error(e);
-            alert("Client/Network Error: " + e.message);
+            alert("Login failed. Login server error.");
         }
     }
 }

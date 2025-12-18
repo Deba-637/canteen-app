@@ -67,29 +67,6 @@ def init_db():
     conn.close()
     print("Database initialized.")
 
-import traceback
-
-@app.errorhandler(Exception)
-def handle_exception(e):
-    # Pass through HTTP errors
-    from werkzeug.exceptions import HTTPException
-    
-    # If it's a 500 error (wrapped exception), we want the original traceback
-    if isinstance(e, HTTPException):
-        # For non-500 HTTP errors (404, 401 etc), return JSON too for consistency
-        response = e.get_response()
-        response.data = json.dumps({
-            "code": e.code,
-            "name": e.name,
-            "description": e.description,
-        })
-        response.content_type = "application/json"
-        return response
-
-    print(f"Global Exception: {e}")
-    print(traceback.format_exc())
-    return jsonify({"status": "error", "message": f"Global Server Error: {str(e)}", "trace": traceback.format_exc()}), 500
-
 # --- Routes ---
 
 @app.route('/')
@@ -110,8 +87,6 @@ def bill_view(bill_id):
 
 @app.route('/api/login', methods=['POST'])
 def login():
-    print(f"Login Request Headers: {request.headers}")
-    print(f"Login Request Data: {request.get_data(as_text=True)}")
     try:
         data = request.json
         if not data:
@@ -128,12 +103,11 @@ def login():
             else:
                 return jsonify({"status": "error", "message": "Invalid Admin Credentials"}), 401
         
-        
         elif role == 'operator':
             try:
-                init_db() # Ensure DB/Tables vary time
+                init_db() # Ensure DB exists (lazy init)
             except: 
-                pass # If it fails, next step will fail and be caught
+                pass 
 
             conn = get_db_connection()
             c = conn.cursor()
@@ -148,8 +122,7 @@ def login():
 
         return jsonify({"status": "error", "message": "Invalid Role"}), 400
     except Exception as e:
-        print(f"Login Error: {e}")
-        return jsonify({"status": "error", "message": f"Login server error: {str(e)}"}), 500
+        return jsonify({"status": "error", "message": "Login server error"}), 500
 
 # --- Student Management (Admin) ---
 
