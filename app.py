@@ -1,5 +1,9 @@
 from flask import Flask, request, jsonify, send_file, send_from_directory
-import sqlite3
+try:
+    import sqlite3
+except ImportError:
+    sqlite3 = None
+    print("WARNING: sqlite3 module not found. DB features will fail.")
 import os
 import datetime
 import csv
@@ -10,6 +14,8 @@ app = Flask(__name__, static_folder='static', static_url_path='')
 DB_FILE = 'canteen.db'
 
 def get_db_connection():
+    if sqlite3 is None:
+        raise Exception("sqlite3 module is missing on this server.")
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn
