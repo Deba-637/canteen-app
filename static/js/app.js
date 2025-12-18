@@ -61,7 +61,7 @@ function initLogin() {
             }
         } catch (e) {
             console.error(e);
-            alert("Login failed. Login server error.");
+            alert("Client/Network Error: " + e.message);
         }
     }
 }

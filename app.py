@@ -127,7 +127,8 @@ def login():
 
         return jsonify({"status": "error", "message": "Invalid Role"}), 400
     except Exception as e:
-        return jsonify({"status": "error", "message": "Login server error"}), 500
+        print(f"Login Error: {e}")
+        return jsonify({"status": "error", "message": f"Login Error: {str(e)}"}), 500
 
 # --- Student Management (Admin) ---
 
