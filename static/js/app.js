@@ -47,6 +47,14 @@ function initLogin() {
                 body: JSON.stringify({ role: loginRole, username: user, password: pass })
             });
 
+            if (!res.ok) {
+                const text = await res.text();
+                alert(`Server Error (${res.status}): ${text.substring(0, 200)}`);
+                return;
+            }
+
+            const data = await res.json();
+
             if (data.status === 'success') {
                 sessionStorage.setItem('canteen_role', data.role);
                 if (data.role === 'operator') {
