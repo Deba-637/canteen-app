@@ -329,10 +329,13 @@ function initAdmin() {
     }
 
     // Enter Key Listener for Add Student
-    const inputs = document.querySelectorAll('#new-std-name, #new-std-roll, #new-std-branch, #new-std-amount');
+    const inputs = document.querySelectorAll('#new-std-name, #new-std-roll, #new-std-branch, #new-std-amount, #new-std-status, #new-std-mode');
+    console.log("Attached Enter Listener to " + inputs.length + " inputs");
+
     inputs.forEach(input => {
         input.addEventListener('keyup', (e) => {
             if (e.key === 'Enter') {
+                console.log("Enter pressed in " + input.id);
                 addStudent();
             }
         });
