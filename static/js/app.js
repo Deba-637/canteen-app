@@ -98,6 +98,7 @@ window.addStudent = async function () {
     const id = document.getElementById('edit-std-id').value;
     const name = document.getElementById('new-std-name').value;
     const roll = document.getElementById('new-std-roll').value;
+    const phone = document.getElementById('new-std-phone').value;
     const status = document.getElementById('new-std-status').value;
     const mode = document.getElementById('new-std-mode').value;
     const branch = document.getElementById('new-std-branch').value || 'General';
@@ -110,6 +111,7 @@ window.addStudent = async function () {
         const body = {
             name: name,
             roll: roll,
+            phone: phone,
             payment_status: status,
             payment_mode: mode,
             dept: branch,
@@ -133,6 +135,7 @@ window.addStudent = async function () {
         document.getElementById('edit-std-id').value = '';
         document.getElementById('new-std-name').value = '';
         document.getElementById('new-std-roll').value = '';
+        document.getElementById('new-std-phone').value = '';
         document.getElementById('new-std-branch').value = '';
         document.getElementById('new-std-amount').value = '';
         document.getElementById('btn-add-student').textContent = 'Add Student';
@@ -147,6 +150,7 @@ window.editStudent = function (student) {
     document.getElementById('edit-std-id').value = student.id;
     document.getElementById('new-std-name').value = student.name;
     document.getElementById('new-std-roll').value = student.roll || '';
+    document.getElementById('new-std-phone').value = student.phone || '';
     document.getElementById('new-std-branch').value = student.dept || '';
     document.getElementById('new-std-status').value = student.payment_status;
     document.getElementById('new-std-mode').value = student.payment_mode;
@@ -255,6 +259,7 @@ async function loadStudents() {
                         <td>${index + 1} (ID: ${s.id})</td>
                         <td>${s.name}</td>
                         <td>${s.roll || '-'}</td>
+                        <td>${s.phone || '-'}</td>
                         <td>${s.dept || '-'}</td>
                         <td>B:${s.breakfast_count} / L:${s.lunch_count} / D:${s.dinner_count}</td>
                         <td>${s.payment_status} (${s.payment_mode})</td>

@@ -33,10 +33,20 @@ def init_db():
                      name TEXT NOT NULL,
                      roll TEXT NOT NULL UNIQUE,
                      dept TEXT NOT NULL,
+                     phone TEXT,
                      payment_status TEXT DEFAULT 'Unpaid',
                      payment_mode TEXT DEFAULT 'Cash',
                      amount_paid INTEGER DEFAULT 0
                      )''')
+
+        # Migration: Add phone column if missing
+        try:
+            c.execute("PRAGMA table_info(students)")
+            stud_cols = [info[1] for info in c.fetchall()]
+            if 'phone' not in stud_cols:
+                print("Migrating: Adding phone column to students table...")
+                c.execute("ALTER TABLE students ADD COLUMN phone TEXT")
+        except Exception as e: print(f"Migration Error (Students): {e}")
 
         # Meals Table (Tracking daily meals)
         c.execute('''CREATE TABLE IF NOT EXISTS meals (
@@ -212,8 +222,8 @@ def manage_students():
                     break
             
             # Insert with explicit ID
-            c.execute("INSERT INTO students (id, name, roll, dept, payment_status, payment_mode, amount_paid) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                      (new_id, data['name'], data.get('roll',''), data.get('dept',''), 
+            c.execute("INSERT INTO students (id, name, roll, dept, phone, payment_status, payment_mode, amount_paid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                      (new_id, data['name'], data.get('roll',''), data.get('dept',''), data.get('phone',''), 
                        data.get('payment_status','Unpaid'), data.get('payment_mode','Cash'), data.get('amount_paid', 0)))
             conn.commit()
             return jsonify({'status': 'success', 'id': new_id})
@@ -224,8 +234,8 @@ def manage_students():
 
     if request.method == 'PUT':
         data = request.json
-        c.execute("UPDATE students SET name=?, roll=?, dept=?, payment_status=?, payment_mode=?, amount_paid=? WHERE id=?",
-                  (data['name'], data.get('roll'), data.get('dept'), 
+        c.execute("UPDATE students SET name=?, roll=?, dept=?, phone=?, payment_status=?, payment_mode=?, amount_paid=? WHERE id=?",
+                  (data['name'], data.get('roll'), data.get('dept'), data.get('phone'), 
                    data.get('payment_status'), data.get('payment_mode'), data.get('amount_paid'), data['id']))
         conn.commit()
         conn.close()
