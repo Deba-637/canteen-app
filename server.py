@@ -81,6 +81,16 @@ def init_db():
                  details TEXT,
                  payment_mode TEXT
                  )''')
+                 
+    # Migration: Ensure 'amount' and 'payment_mode' columns exist
+    c.execute("PRAGMA table_info(bills)")
+    bill_cols = [info[1] for info in c.fetchall()]
+    if 'amount' not in bill_cols:
+        print("Migrating: Adding amount column to bills table...")
+        c.execute("ALTER TABLE bills ADD COLUMN amount REAL DEFAULT 0")
+    if 'payment_mode' not in bill_cols:
+        print("Migrating: Adding payment_mode column to bills table...")
+        c.execute("ALTER TABLE bills ADD COLUMN payment_mode TEXT DEFAULT 'Cash'")
     
     # Create Default Admin if not exists
     # Note: Using plain text passwords for now as requested/simplest migration, 
@@ -359,9 +369,14 @@ def get_meal_report():
     row = c.fetchone()
 
     # Calculate Daily Revenue
-    c.execute("SELECT sum(amount) FROM bills WHERE date LIKE ?", (today + '%',))
-    rev_row = c.fetchone()
-    total_revenue = rev_row[0] or 0
+    total_revenue = 0
+    try:
+        c.execute("SELECT sum(amount) FROM bills WHERE date LIKE ?", (today + '%',))
+        rev_row = c.fetchone()
+        if rev_row and rev_row[0]:
+             total_revenue = rev_row[0]
+    except Exception as e:
+        print(f"Revenue Calc Error: {e}")
     
     conn.close()
     
