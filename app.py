@@ -367,8 +367,8 @@ def view_bill(bill_no):
             <hr>
             <div class="line"><span>Item:</span> <span>{details.get('meal_type', 'Meal')}</span></div>
             <div class="line"><span>Type:</span> <span>{details.get('user_type')}</span></div>
-            {{f'<div class="line"><span>Student ID:</span> <span>{{details.get("student_id")}}</span></div>' if details.get('student_id') else ''}}
-            {{f'<div class="line"><span>Name:</span> <span>{{details.get("guest_name")}}</span></div>' if details.get('guest_name') else ''}}
+            {f'<div class="line"><span>Student ID:</span> <span>{details.get("student_id")}</span></div>' if details.get('student_id') else ''}
+            {f'<div class="line"><span>Name:</span> <span>{details.get("guest_name")}</span></div>' if details.get('guest_name') else ''}
             
             <div class="line total"><span>TOTAL:</span> <span>₹{row['amount']}</span></div>
             <div class="line"><span>Mode:</span> <span>{row['payment_mode']}</span></div>
