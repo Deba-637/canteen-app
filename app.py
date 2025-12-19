@@ -111,6 +111,13 @@ def init_db():
                       ('admin', 'admin123', 'admin'))
             print("Created default admin user (admin/admin123)")
 
+        # Create Default Operator if not exists
+        c.execute("SELECT id FROM operators WHERE username='operator'")
+        if not c.fetchone():
+            c.execute("INSERT INTO operators (username, password, role) VALUES (?, ?, ?)", 
+                      ('operator', 'pass123', 'operator'))
+            print("Created default operator user (operator/pass123)")
+
         conn.commit()
         conn.close()
         print("Database initialized successfully.")
