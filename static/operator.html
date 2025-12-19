@@ -51,27 +51,41 @@
 
                 <div class="meal-selection">
                     <label>Meal Type:</label>
-                    <select id="bill-meal-type">
-                        <option value="Breakfast">Breakfast</option>
-                        <option value="Lunch">Lunch</option>
-                        <option value="Dinner">Dinner</option>
-                    </select>
+                    <div class="option-group" id="opt-meal-type">
+                        <button class="option-btn active" data-value="Breakfast"
+                            onclick="selectOption('bill-meal-type', 'Breakfast', this)">Breakfast</button>
+                        <button class="option-btn" data-value="Lunch"
+                            onclick="selectOption('bill-meal-type', 'Lunch', this)">Lunch</button>
+                        <button class="option-btn" data-value="Dinner"
+                            onclick="selectOption('bill-meal-type', 'Dinner', this)">Dinner</button>
+                    </div>
+                    <input type="hidden" id="bill-meal-type" value="Breakfast">
 
-                    <label>Amount (₹):</label>
-                    <input type="number" id="bill-amount" value="50">
+                    <label style="margin-top: 1rem;">Amount (₹):</label>
+                    <div class="option-group" id="opt-amount">
+                        <button class="option-btn" onclick="selectAmount(30, this)">30</button>
+                        <button class="option-btn" onclick="selectAmount(40, this)">40</button>
+                        <button class="option-btn active" onclick="selectAmount(50, this)">50</button>
+                        <button class="option-btn" onclick="selectAmount(60, this)">60</button>
+                        <button class="option-btn" onclick="selectAmount('other', this)">Other</button>
+                    </div>
+                    <input type="number" id="bill-amount" value="50" style="margin-top: 5px;">
 
-                    <label>Payment Mode:</label>
-                    <select id="bill-payment-mode">
-                        <option value="Cash">Cash</option>
-                        <option value="UPI">UPI</option>
-                    </select>
+                    <label style="margin-top: 1rem;">Payment Mode:</label>
+                    <div class="option-group" id="opt-payment-mode">
+                        <button class="option-btn active" data-value="Cash"
+                            onclick="selectOption('bill-payment-mode', 'Cash', this)">Cash</button>
+                        <button class="option-btn" data-value="UPI"
+                            onclick="selectOption('bill-payment-mode', 'UPI', this)">UPI</button>
+                    </div>
+                    <input type="hidden" id="bill-payment-mode" value="Cash">
                 </div>
 
                 <button onclick="generateBill()" class="primary-btn large-btn">PRINT BILL</button>
             </div>
 
             <div class="live-stats">
-                <h3>Today's Count</h3>
+                <h3>Today's Stats</h3>
                 <div id="op-meal-stats">
                     Loading stats...
                 </div>

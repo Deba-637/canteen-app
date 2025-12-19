@@ -357,12 +357,19 @@ def get_meal_report():
     
     c.execute("SELECT sum(breakfast), sum(lunch), sum(dinner) FROM meals WHERE date=?", (today,))
     row = c.fetchone()
+
+    # Calculate Daily Revenue
+    c.execute("SELECT sum(amount) FROM bills WHERE date LIKE ?", (today + '%',))
+    rev_row = c.fetchone()
+    total_revenue = rev_row[0] or 0
+    
     conn.close()
     
     return jsonify({
         'Breakfast': row[0] or 0,
         'Lunch': row[1] or 0,
-        'Dinner': row[2] or 0
+        'Dinner': row[2] or 0,
+        'revenue': total_revenue
     })
 
 @app.route('/api/export')

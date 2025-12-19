@@ -292,9 +292,15 @@ async function loadReports() {
         if (div) {
             let html = '<ul>';
             for (const [meal, count] of Object.entries(stats)) {
+                if (meal === 'revenue') continue;
                 html += `<li><strong>${meal}:</strong> ${count}</li>`;
             }
             html += '</ul>';
+            if (stats.revenue !== undefined) {
+                html += `<div style="margin-top: 10px; border-top: 1px solid #ddd; padding-top: 5px;">
+                            <strong>Total Collection:</strong> <span style="color: green; font-weight: bold; font-size: 1.1em;">₹${stats.revenue}</span>
+                         </div>`;
+            }
             div.innerHTML = html;
         }
     } catch (e) { console.error("Load Reports Fault", e); }
@@ -321,6 +327,16 @@ function initAdmin() {
             });
         });
     }
+
+    // Enter Key Listener for Add Student
+    const inputs = document.querySelectorAll('#new-std-name, #new-std-roll, #new-std-branch, #new-std-amount');
+    inputs.forEach(input => {
+        input.addEventListener('keyup', (e) => {
+            if (e.key === 'Enter') {
+                addStudent();
+            }
+        });
+    });
 }
 
 
@@ -462,9 +478,43 @@ async function loadLiveStats() {
         if (div) {
             let html = '';
             for (const [meal, count] of Object.entries(stats)) {
+                if (meal === 'revenue') continue;
                 html += `<div>${meal}: ${count}</div>`;
+            }
+            if (stats.revenue !== undefined) {
+                html += `<div style="margin-top: 10px; border-top: 1px solid #ccc; padding-top: 5px; font-weight: bold;">
+                            Total: <span style="color: #2ecc71;">₹${stats.revenue}</span>
+                          </div>`;
             }
             div.innerHTML = html || 'No meals served.';
         }
     } catch (e) { console.error("Stats Error", e); }
+}
+
+window.selectOption = function (inputId, value, btnElement) {
+    // defined global to be accessible from onclick
+    document.getElementById(inputId).value = value;
+
+    // Toggle active class on buttons in the same group
+    const group = btnElement.parentElement;
+    const buttons = group.querySelectorAll('.option-btn');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    btnElement.classList.add('active');
+}
+
+window.selectAmount = function (value, btnElement) {
+    const input = document.getElementById('bill-amount');
+
+    // Toggle active class
+    const group = btnElement.parentElement;
+    const buttons = group.querySelectorAll('.option-btn');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    btnElement.classList.add('active');
+
+    if (value === 'other') {
+        input.focus();
+        // If user types, we keep "Other" selected visually
+    } else {
+        input.value = value;
+    }
 }

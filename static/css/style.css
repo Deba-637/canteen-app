@@ -508,3 +508,33 @@ input:focus,
 select:focus {
     box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.2);
 }
+
+/* Option Groups (Buttons replacing Selects) */
+.option-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 1rem;
+}
+
+.option-btn {
+    flex: 1;
+    padding: 0.8rem;
+    border: 1px solid var(--border-color);
+    background: white;
+    color: var(--text-color);
+    border-radius: 4px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.option-btn:hover {
+    background: #f1f2f6;
+    border-color: #bdc3c7;
+}
+
+.option-btn.active {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 5px rgba(74, 144, 226, 0.3);
+}
