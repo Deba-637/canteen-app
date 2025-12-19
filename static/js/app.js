@@ -117,11 +117,17 @@ window.addStudent = async function () {
         };
         if (id) body.id = id;
 
-        await fetch('/api/students', {
+        const res = await fetch('/api/students', {
             method: method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
+
+        if (!res.ok) {
+            const errData = await res.json();
+            alert("Error: " + (errData.error || errData.message || "Unknown error"));
+            return;
+        }
 
         // Reset form
         document.getElementById('edit-std-id').value = '';
