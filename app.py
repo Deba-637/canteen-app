@@ -114,6 +114,17 @@ def init_db():
                      details TEXT,
                      payment_mode TEXT
                      )''')
+
+        # Student Transactions Table (For Payment History)
+        c.execute('''CREATE TABLE IF NOT EXISTS student_transactions (
+                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     student_id INTEGER,
+                     amount REAL,
+                     date TEXT,
+                     mode TEXT,
+                     remarks TEXT,
+                     FOREIGN KEY(student_id) REFERENCES students(id)
+                     )''')
                      
         # Migration: Ensure 'amount' and 'payment_mode' columns exist
         try:
