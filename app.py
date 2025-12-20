@@ -47,6 +47,18 @@ def init_db():
             if 'phone' not in stud_cols:
                 print("Migrating: Adding phone column to students table...")
                 c.execute("ALTER TABLE students ADD COLUMN phone TEXT")
+            
+            if 'payment_status' not in stud_cols:
+                 c.execute("ALTER TABLE students ADD COLUMN payment_status TEXT DEFAULT 'Unpaid'")
+            if 'payment_mode' not in stud_cols:
+                 c.execute("ALTER TABLE students ADD COLUMN payment_mode TEXT DEFAULT 'Cash'")
+            if 'amount_paid' not in stud_cols:
+                print("Migrating: Adding amount_paid column...")
+                c.execute("ALTER TABLE students ADD COLUMN amount_paid INTEGER DEFAULT 0")
+            if 'remaining_amount' not in stud_cols:
+                print("Migrating: Adding remaining_amount column...")
+                c.execute("ALTER TABLE students ADD COLUMN remaining_amount REAL DEFAULT 0")
+                
         except Exception as e: print(f"Migration Error (Students): {e}")
 
         # Meals Table (Tracking daily meals)
