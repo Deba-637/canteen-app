@@ -99,7 +99,8 @@ window.addStudent = async function () {
     const name = document.getElementById('new-std-name').value;
     const roll = document.getElementById('new-std-roll').value;
     const phone = document.getElementById('new-std-phone').value;
-    const status = document.getElementById('new-std-status').value;
+    // const status = document.getElementById('new-std-status').value; // Deprecated
+    const remaining = document.getElementById('new-std-remaining').value || 0;
     const mode = document.getElementById('new-std-mode').value;
     const branch = document.getElementById('new-std-branch').value || 'General';
     const amount = document.getElementById('new-std-amount').value || 0;
@@ -112,7 +113,9 @@ window.addStudent = async function () {
             name: name,
             roll: roll,
             phone: phone,
-            payment_status: status,
+
+            // payment_status: status,
+            remaining_amount: remaining,
             payment_mode: mode,
             dept: branch,
             amount_paid: amount
@@ -146,20 +149,54 @@ window.addStudent = async function () {
 }
 
 window.editStudent = function (student) {
-    // Populate form
-    document.getElementById('edit-std-id').value = student.id;
-    document.getElementById('new-std-name').value = student.name;
-    document.getElementById('new-std-roll').value = student.roll || '';
-    document.getElementById('new-std-phone').value = student.phone || '';
-    document.getElementById('new-std-branch').value = student.dept || '';
-    document.getElementById('new-std-status').value = student.payment_status;
-    document.getElementById('new-std-mode').value = student.payment_mode;
-    document.getElementById('new-std-amount').value = student.amount_paid || 0;
+    // Populate Modal
+    document.getElementById('edit-modal-id').value = student.id;
+    document.getElementById('edit-modal-name').value = student.name;
+    document.getElementById('edit-modal-roll').value = student.roll || '';
+    document.getElementById('edit-modal-dept').value = student.dept || '';
+    document.getElementById('edit-modal-phone').value = student.phone || '';
+    document.getElementById('edit-modal-remaining').value = student.remaining_amount || 0;
 
-    // Change button
-    const btn = document.getElementById('btn-add-student');
-    btn.textContent = 'Update Student';
-    btn.scrollIntoView({ behavior: 'smooth' });
+    // Show Modal
+    document.getElementById('edit-modal').classList.remove('hidden');
+}
+
+window.submitEditStudent = async function () {
+    const id = document.getElementById('edit-modal-id').value;
+    const name = document.getElementById('edit-modal-name').value;
+    const roll = document.getElementById('edit-modal-roll').value;
+    const dept = document.getElementById('edit-modal-dept').value;
+    const phone = document.getElementById('edit-modal-phone').value;
+    const remaining = document.getElementById('edit-modal-remaining').value;
+
+    if (!name) return alert("Name is required");
+
+    try {
+        const res = await fetch('/api/students', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                id: id,
+                name: name,
+                roll: roll,
+                dept: dept,
+                phone: phone,
+                remaining_amount: remaining
+                // We preserve other fields implicitly in backend or they are not editable here
+            })
+        });
+
+        if (res.ok) {
+            alert("Student Updated Successfully");
+            document.getElementById('edit-modal').classList.add('hidden');
+            loadStudents();
+        } else {
+            const err = await res.json();
+            alert("Update Failed: " + (err.error || "Unknown Error"));
+        }
+    } catch (e) {
+        alert("Network Error: " + e);
+    }
 }
 
 window.deleteStudent = async function (id) {
@@ -262,11 +299,13 @@ async function loadStudents() {
                         <td>${s.phone || '-'}</td>
                         <td>${s.dept || '-'}</td>
                         <td>B:${s.breakfast_count} / L:${s.lunch_count} / D:${s.dinner_count}</td>
-                        <td>${s.payment_status} (${s.payment_mode})</td>
+                        <td style="color: ${s.remaining_amount > 0 ? 'red' : 'green'}; font-weight: bold;">₹${s.remaining_amount || 0}</td>
                         <td>₹${s.amount_paid || 0}</td>
                         <td>
                             <button onclick="window.editStudent(${sData})" class="primary-btn" style="padding: 5px 10px; font-size: 0.8em;">Edit</button>
-                            <button onclick="window.deleteStudent(${s.id})" class="danger-btn" style="padding: 5px 10px; font-size: 0.8em;">Delete</button>
+                            <button onclick="window.openPayModal(${s.id}, '${s.name}')" class="primary-btn" style="padding: 5px 10px; font-size: 0.8em; background-color: #27ae60; margin-left: 5px;">Pay</button>
+                            <button onclick="window.viewStudentReport(${s.id})" class="secondary-btn" style="padding: 5px 10px; font-size: 0.8em; margin-left: 5px;">Report</button>
+                            <button onclick="window.deleteStudent(${s.id})" class="danger-btn" style="padding: 5px 10px; font-size: 0.8em; margin-left: 5px;">Delete</button>
                         </td>
                     </tr>
                 `;
@@ -317,6 +356,110 @@ async function loadReports() {
     } catch (e) { console.error("Load Reports Fault", e); }
 }
 
+window.viewStudentReport = async function (id) {
+    try {
+        const res = await fetch(`/api/reports/student/${id}`);
+        if (!res.ok) {
+            const err = await res.json();
+            alert("Error: " + (err.error || "Failed to load report"));
+            return;
+        }
+
+        const data = await res.json();
+        const std = data.student;
+
+        // Populate Meta
+        document.getElementById('report-meta').innerHTML = `
+            <p><strong>Name:</strong> ${std.name} (${std.roll || 'N/A'})</p>
+            <p><strong>Remaining (Debt):</strong> <span style="color:red">₹${std.remaining_amount || 0}</span></p>
+            <p><strong>Total Paid:</strong> ₹${std.amount_paid || 0}</p>
+        `;
+
+        // Populate Meals
+        const mealTbody = document.getElementById('report-meals-list');
+        mealTbody.innerHTML = '';
+        if (data.meals.length === 0) {
+            mealTbody.innerHTML = '<tr><td colspan="4">No meals recorded.</td></tr>';
+        } else {
+            data.meals.forEach(m => {
+                mealTbody.innerHTML += `
+                    <tr>
+                        <td>${m.date}</td>
+                        <td>${m.breakfast ? 'Yes' : '-'}</td>
+                        <td>${m.lunch ? 'Yes' : '-'}</td>
+                        <td>${m.dinner ? 'Yes' : '-'}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        // Populate Money
+        const moneyTbody = document.getElementById('report-money-list');
+        moneyTbody.innerHTML = '';
+        if (data.transactions.length === 0) {
+            moneyTbody.innerHTML = '<tr><td colspan="5">No transactions found.</td></tr>';
+        } else {
+            // Header needs update to support mixed types? 
+            // Current header: Date | Bill No | Item | Amount | Mode
+            // For Payment: Date | - | Fee Payment | Amount | Mode
+            data.transactions.forEach(t => {
+                const isPay = t.type === 'Payment';
+                moneyTbody.innerHTML += `
+                    <tr style="background-color: ${isPay ? '#e8f8f5' : 'inherit'}">
+                        <td>${t.date}</td>
+                        <td>${t.type === 'Food' ? '#' : ''}</td>
+                        <td>${t.item}</td>
+                        <td style="color: ${t.color}; font-weight: bold;">₹${t.amount}</td>
+                        <td>${t.mode}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        // Show Modal
+        document.getElementById('report-modal').classList.remove('hidden');
+
+    } catch (e) {
+        console.error(e);
+        alert("Network Error loading report");
+    }
+}
+
+window.openPayModal = function (id, name) {
+    document.getElementById('pay-student-id').value = id;
+    document.getElementById('pay-student-name').textContent = "Paying for: " + name;
+    document.getElementById('pay-amount').value = '';
+    document.getElementById('pay-modal').classList.remove('hidden');
+    document.getElementById('pay-amount').focus();
+}
+
+window.submitPayment = async function () {
+    const id = document.getElementById('pay-student-id').value;
+    const amount = document.getElementById('pay-amount').value;
+    const mode = document.getElementById('pay-mode').value;
+
+    if (!amount || amount <= 0) return alert("Enter valid amount");
+
+    try {
+        const res = await fetch('/api/students/pay', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ student_id: id, amount: amount, mode: mode })
+        });
+
+        const data = await res.json();
+        if (data.status === 'success') {
+            alert("Payment Successful!");
+            document.getElementById('pay-modal').classList.add('hidden');
+            loadStudents(); // Refresh table
+        } else {
+            alert("Error: " + data.error);
+        }
+    } catch (e) {
+        alert("Network Error: " + e);
+    }
+}
+
 function initAdmin() {
     // Guard
     if (sessionStorage.getItem('canteen_role') !== 'admin') {
@@ -340,7 +483,7 @@ function initAdmin() {
     }
 
     // Enter Key Listener for Add Student
-    const inputs = document.querySelectorAll('#new-std-name, #new-std-roll, #new-std-branch, #new-std-amount, #new-std-status, #new-std-mode');
+    const inputs = document.querySelectorAll('#new-std-name, #new-std-roll, #new-std-branch, #new-std-amount, #new-std-remaining, #new-std-mode');
     console.log("Attached Enter Listener to " + inputs.length + " inputs");
 
     inputs.forEach(input => {

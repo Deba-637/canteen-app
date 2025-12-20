@@ -30,11 +30,7 @@
                 <input type="text" id="new-std-name" placeholder="Student Name">
                 <input type="text" id="new-std-roll" placeholder="Roll No" style="width: 100px;">
                 <input type="text" id="new-std-phone" placeholder="Phone" style="width: 120px;">
-                <select id="new-std-status">
-                    <option value="Unpaid">Unpaid</option>
-                    <option value="Half Paid">Half Paid</option>
-                    <option value="Full Paid">Full Paid</option>
-                </select>
+                <input type="number" id="new-std-remaining" placeholder="Remaining Amount (Debt)" style="width: 150px;">
                 <select id="new-std-mode">
                     <option value="Cash">Cash</option>
                     <option value="UPI">UPI</option>
@@ -52,7 +48,7 @@
                         <th>Phone</th>
                         <th>Branch</th>
                         <th>B / L / D Count</th>
-                        <th>Status</th>
+                        <th>Remaining (₹)</th>
                         <th>Paid (₹)</th>
                         <th>Action</th>
                     </tr>
@@ -97,6 +93,100 @@
                 </div>
             </div>
         </section>
+    </div>
+
+    <!-- Report Modal -->
+    <div id="report-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 800px;">
+            <span class="close-btn"
+                onclick="document.getElementById('report-modal').classList.add('hidden')">&times;</span>
+            <div id="report-content">
+                <h3>Student Report</h3>
+                <div id="report-meta"></div>
+                <div class="report-section">
+                    <h4>Meal History</h4>
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Breakfast</th>
+                                <th>Lunch</th>
+                                <th>Dinner</th>
+                            </tr>
+                        </thead>
+                        <tbody id="report-meals-list"></tbody>
+                    </table>
+                </div>
+                <div class="report-section">
+                    <h4>Financial History</h4>
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Bill No</th>
+                                <th>Item</th>
+                                <th>Amount</th>
+                                <th>Mode</th>
+                            </tr>
+                        </thead>
+                        <tbody id="report-money-list"></tbody>
+                    </table>
+                </div>
+            </div>
+            <button onclick="document.getElementById('report-modal').classList.add('hidden')" class="primary-btn"
+                style="margin-top: 10px;">Close</button>
+        </div>
+    </div>
+
+    <!-- Pay Modal -->
+    <div id="pay-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 400px; text-align: center;">
+            <span class="close-btn"
+                onclick="document.getElementById('pay-modal').classList.add('hidden')">&times;</span>
+            <h3>Receive Payment</h3>
+            <p id="pay-student-name" style="margin-bottom: 10px; font-weight: bold;"></p>
+            <input type="hidden" id="pay-student-id">
+
+            <input type="number" id="pay-amount" placeholder="Amount (₹)"
+                style="margin-bottom: 10px; width: 100%; padding: 10px; font-size: 1.2rem;">
+
+            <div class="option-group" style="margin-bottom: 15px;">
+                <button onclick="selectOption('pay-mode', 'Cash', this)" class="option-btn active">Cash</button>
+                <button onclick="selectOption('pay-mode', 'UPI', this)" class="option-btn">UPI</button>
+                <input type="hidden" id="pay-mode" value="Cash">
+            </div>
+
+            <button onclick="submitPayment()" class="primary-btn" style="width: 100%; background: #2ecc71;">Confirm
+                Payment</button>
+        </div>
+    </div>
+
+    <!-- Edit Student Modal -->
+    <div id="edit-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 500px;">
+            <span class="close-btn"
+                onclick="document.getElementById('edit-modal').classList.add('hidden')">&times;</span>
+            <h3>Edit Student Details</h3>
+            <input type="hidden" id="edit-modal-id">
+
+            <div class="form-group" style="flex-direction: column; gap: 1rem;">
+                <label>Name: <input type="text" id="edit-modal-name" placeholder="Full Name"
+                        style="width: 100%;"></label>
+                <div style="display: flex; gap: 1rem;">
+                    <label style="flex: 1;">Roll No: <input type="text" id="edit-modal-roll" placeholder="Roll No"
+                            style="width: 100%;"></label>
+                    <label style="flex: 1;">Dept/Branch: <input type="text" id="edit-modal-dept" placeholder="Dept"
+                            style="width: 100%;"></label>
+                </div>
+                <label>Phone: <input type="text" id="edit-modal-phone" placeholder="Phone Number"
+                        style="width: 100%;"></label>
+                <label>Existing Debt (Remaining): <input type="number" id="edit-modal-remaining"
+                        placeholder="Debt Amount" style="width: 100%; color: red;"></label>
+            </div>
+
+            <button onclick="submitEditStudent()" class="primary-btn" style="width: 100%; margin-top: 1.5rem;">Save
+                Changes</button>
+        </div>
     </div>
 
     <script src="js/app.js?v=8"></script>

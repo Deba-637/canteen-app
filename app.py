@@ -36,7 +36,8 @@ def init_db():
                      phone TEXT,
                      payment_status TEXT DEFAULT 'Unpaid',
                      payment_mode TEXT DEFAULT 'Cash',
-                     amount_paid INTEGER DEFAULT 0
+                     amount_paid INTEGER DEFAULT 0,
+                     remaining_amount REAL DEFAULT 0
                      )''')
 
         # Migration: Add phone column if missing
@@ -203,6 +204,8 @@ def manage_students():
             s_data['breakfast_count'] = meal_row['breakfast'] if meal_row else 0
             s_data['lunch_count'] = meal_row['lunch'] if meal_row else 0
             s_data['dinner_count'] = meal_row['dinner'] if meal_row else 0
+            # Ensure safe defaults if column is null
+            s_data['remaining_amount'] = s_data.get('remaining_amount') or 0
             students.append(s_data)
         conn.close()
         return jsonify(students)
@@ -222,9 +225,9 @@ def manage_students():
                     break
             
             # Insert with explicit ID
-            c.execute("INSERT INTO students (id, name, roll, dept, phone, payment_status, payment_mode, amount_paid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            c.execute("INSERT INTO students (id, name, roll, dept, phone, payment_status, payment_mode, amount_paid, remaining_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                       (new_id, data['name'], data.get('roll',''), data.get('dept',''), data.get('phone',''), 
-                       data.get('payment_status','Unpaid'), data.get('payment_mode','Cash'), data.get('amount_paid', 0)))
+                       data.get('payment_status','Unpaid'), data.get('payment_mode','Cash'), data.get('amount_paid', 0), data.get('remaining_amount', 0)))
             conn.commit()
             return jsonify({'status': 'success', 'id': new_id})
         except sqlite3.IntegrityError:
@@ -234,9 +237,9 @@ def manage_students():
 
     if request.method == 'PUT':
         data = request.json
-        c.execute("UPDATE students SET name=?, roll=?, dept=?, phone=?, payment_status=?, payment_mode=?, amount_paid=? WHERE id=?",
+        c.execute("UPDATE students SET name=?, roll=?, dept=?, phone=?, payment_status=?, payment_mode=?, amount_paid=?, remaining_amount=? WHERE id=?",
                   (data['name'], data.get('roll'), data.get('dept'), data.get('phone'), 
-                   data.get('payment_status'), data.get('payment_mode'), data.get('amount_paid'), data['id']))
+                   data.get('payment_status'), data.get('payment_mode'), data.get('amount_paid'), data.get('remaining_amount'), data['id']))
         conn.commit()
         conn.close()
         return jsonify({'status': 'success'})
@@ -246,9 +249,47 @@ def manage_students():
         c.execute("DELETE FROM students WHERE id=?", (std_id,))
         c.execute("DELETE FROM meals WHERE student_id=?", (std_id,))
         c.execute("DELETE FROM payments WHERE student_id=?", (std_id,))
+        c.execute("DELETE FROM student_transactions WHERE student_id=?", (std_id,))
         conn.commit()
         conn.close()
         return jsonify({'status': 'success'})
+
+@app.route('/api/students/pay', methods=['POST'])
+def pay_student_fees():
+    data = request.json
+    s_id = data.get('student_id')
+    amount = float(data.get('amount', 0))
+    mode = data.get('mode', 'Cash')
+    remarks = data.get('remarks', '')
+    
+    if not s_id or amount <= 0:
+        return jsonify({'error': 'Invalid Id or Amount'}), 400
+        
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        # 1. Update Student Debt
+        c.execute("SELECT remaining_amount, amount_paid FROM students WHERE id=?", (s_id,))
+        row = c.fetchone()
+        if not row: return jsonify({'error': 'Student not found'}), 404
+        
+        new_remaining = (row['remaining_amount'] or 0) - amount
+        new_paid = (row['amount_paid'] or 0) + amount
+        
+        c.execute("UPDATE students SET remaining_amount=?, amount_paid=? WHERE id=?", (new_remaining, new_paid, s_id))
+        
+        # 2. Record Transaction
+        date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        c.execute("INSERT INTO student_transactions (student_id, amount, date, mode, remarks) VALUES (?, ?, ?, ?, ?)",
+                  (s_id, amount, date_str, mode, remarks))
+                  
+        conn.commit()
+        return jsonify({'status': 'success', 'new_remaining': new_remaining})
+    except Exception as e:
+        print(f"Payment Error: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
 
 # --- API: Operators ---
 @app.route('/api/operators', methods=['GET', 'POST', 'DELETE'])
@@ -407,6 +448,79 @@ def get_meal_report():
         'Lunch': row[1] or 0,
         'Dinner': row[2] or 0,
         'revenue': total_revenue
+    })
+
+@app.route('/api/reports/student/<int:student_id>')
+def get_student_report(student_id):
+    conn = get_db()
+    c = conn.cursor()
+    
+    # 1. Student Details
+    c.execute("SELECT * FROM students WHERE id=?", (student_id,))
+    student = c.fetchone()
+    if not student:
+        conn.close()
+        return jsonify({'error': 'Student not found'}), 404
+        
+    student_data = dict(student)
+    
+    # 2. Meal History
+    c.execute("SELECT date, breakfast, lunch, dinner FROM meals WHERE student_id=? ORDER BY date DESC", (student_id,))
+    meals = [dict(row) for row in c.fetchall()]
+    
+    # 3. Transaction History (from bills table for now where student_id is recorded)
+    #    We extract amount and mode. 
+    #    Note: 'bills' stores JSON details. We can filter by details like '%"student_id": "123"%' or do param binding if we structured it better.
+    #    For now, scanning rows is inefficient but acceptable for small scale. 
+    #    Or better: we have a student_id in details JSON. SQL LIKE is tricky for JSON.
+    #    However, we are not storing student_id as a column in bills, only operator_id.
+    #    Wait! The 'bills' table doesn't have student_id column, only details JSON.
+    #    Let's use Python to filter for this student (inefficient but safe for now) OR rely on a future migration.
+    #    Actually current 'bills' schema: id, bill_no, date, operator_id, amount, details, payment_mode.
+    
+    c.execute("SELECT * FROM bills ORDER BY date DESC")
+    all_bills = c.fetchall()
+    
+    # Combined Transactions List
+    transactions = []
+    
+    # Add Bills (Type: Debit/Food)
+    for b in all_bills:
+        try:
+            d = json.loads(b['details'])
+            if str(d.get('student_id')) == str(student_id):
+                transactions.append({
+                    'type': 'Food',
+                    'date': b['date'],
+                    'item': d.get('meal_type', 'N/A'),
+                    'amount': b['amount'],
+                    'mode': b['payment_mode'],
+                    'color': 'red' # Debt increases (or paid immediately but shows consumption)
+                })
+        except: pass
+        
+    # Add Payments (Type: Credit)
+    c.execute("SELECT * FROM student_transactions WHERE student_id=? ORDER BY date DESC", (student_id,))
+    payments = c.fetchall()
+    for p in payments:
+        transactions.append({
+            'type': 'Payment',
+            'date': p['date'],
+            'item': 'Fee Payment',
+            'amount': p['amount'],
+            'mode': p['mode'],
+            'color': 'green' # Debt decreases
+        })
+        
+    # Sort combined list by date desc
+    transactions.sort(key=lambda x: x['date'], reverse=True)
+    
+    conn.close()
+    
+    return jsonify({
+        'student': student_data,
+        'meals': meals,
+        'transactions': transactions
     })
 
 @app.route('/api/export')
