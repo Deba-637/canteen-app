@@ -115,13 +115,14 @@ def init_db():
                      payment_mode TEXT
                      )''')
 
-        # Student Transactions Table (For Payment History)
+                     # Student Transactions Table (For Payment History)
         c.execute('''CREATE TABLE IF NOT EXISTS student_transactions (
                      id INTEGER PRIMARY KEY AUTOINCREMENT,
                      student_id INTEGER,
                      amount REAL,
                      date TEXT,
                      mode TEXT,
+                     type TEXT,
                      remarks TEXT,
                      FOREIGN KEY(student_id) REFERENCES students(id)
                      )''')
@@ -136,7 +137,15 @@ def init_db():
             if 'payment_mode' not in bill_cols:
                 print("Migrating: Adding payment_mode column to bills table...")
                 c.execute("ALTER TABLE bills ADD COLUMN payment_mode TEXT DEFAULT 'Cash'")
-        except Exception as e: print(f"Migration Error (Bills): {e}")
+                
+            # Migration: Ensure 'type' in student_transactions
+            c.execute("PRAGMA table_info(student_transactions)")
+            trans_cols = [info[1] for info in c.fetchall()]
+            if 'type' not in trans_cols:
+                print("Migrating: Adding type column to student_transactions...")
+                c.execute("ALTER TABLE student_transactions ADD COLUMN type TEXT DEFAULT 'Payment'")
+                
+        except Exception as e: print(f"Migration Error (Bills/Trans): {e}")
         
         # Create Default Admin if not exists
         c.execute("SELECT id FROM operators WHERE username='admin'")
