@@ -527,14 +527,26 @@ window.toggleUserType = function () {
         const h = document.getElementById('input-hostel'); if (h) h.classList.remove('hidden');
         const s = document.getElementById('input-staff'); if (s) s.classList.add('hidden');
         const n = document.getElementById('input-normal'); if (n) n.classList.add('hidden');
+
+        // Auto-select Account for Hostel
+        const accBtn = document.querySelector('button[data-value="Account"]');
+        if (accBtn) accBtn.click();
     } else if (type === 'staff') {
         const h = document.getElementById('input-hostel'); if (h) h.classList.add('hidden');
         const s = document.getElementById('input-staff'); if (s) s.classList.remove('hidden');
         const n = document.getElementById('input-normal'); if (n) n.classList.add('hidden');
+
+        // Auto-select Cash for Staff (default)
+        const cashBtn = document.querySelector('button[data-value="Cash"]');
+        if (cashBtn) cashBtn.click();
     } else {
         const h = document.getElementById('input-hostel'); if (h) h.classList.add('hidden');
         const s = document.getElementById('input-staff'); if (s) s.classList.add('hidden');
         const n = document.getElementById('input-normal'); if (n) n.classList.remove('hidden');
+
+        // Auto-select Cash for Guest
+        const cashBtn = document.querySelector('button[data-value="Cash"]');
+        if (cashBtn) cashBtn.click();
     }
 }
 
@@ -553,6 +565,10 @@ window.generateBill = async function () {
             const val = document.getElementById('bill-student-search').value;
             const match = val.match(/\[ID: (\d+)\]/);
             if (match) studentId = match[1];
+
+            // Extract Name: "Name (Roll) [ID: 1]" -> match anything before " ("
+            const nameMatch = val.match(/^(.*?) \(/);
+            if (nameMatch) guestName = nameMatch[1];
         }
         if (!studentId) return alert("Select a valid student.");
     } else if (userType === 'staff') {

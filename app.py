@@ -386,6 +386,16 @@ def create_bill():
                     c.execute("INSERT INTO meals (student_id, date, breakfast, lunch, dinner) VALUES (?, ?, ?, ?, ?)",
                               (s_id, today, vals['breakfast'], vals['lunch'], vals['dinner']))
 
+            # Handle 'Account' Payment (Credit/Debt)
+            if data.get('payment_mode') == 'Account':
+                # Increase remaining_amount (Debt)
+                c.execute("UPDATE students SET remaining_amount = remaining_amount + ? WHERE id=?", 
+                          (data.get('amount'), s_id))
+                
+                # Log Transaction
+                c.execute("INSERT INTO student_transactions (student_id, amount, date, mode, type, remarks) VALUES (?, ?, ?, ?, ?, ?)",
+                          (s_id, data.get('amount'), date_str, 'Account', 'Food', f"Meal: {data.get('meal_type')}"))
+
         conn.commit()
         return jsonify({'status': 'success', 'bill_no': bill_no})
     except Exception as e:
@@ -431,8 +441,8 @@ def view_bill(bill_no):
             <hr>
             <div class="line"><span>Item:</span> <span>{details.get('meal_type', 'Meal')}</span></div>
             <div class="line"><span>Type:</span> <span>{details.get('user_type')}</span></div>
-            {f'<div class="line"><span>Student ID:</span> <span>{details.get("student_id")}</span></div>' if details.get('student_id') else ''}
-            {f'<div class="line"><span>Name:</span> <span>{details.get("guest_name")}</span></div>' if details.get('guest_name') else ''}
+            {f'<div class="line"><span>Name:</span> <span>{details.get("guest_name", "N/A")}</span></div>' if details.get('guest_name') else ''}
+            {f'<div class="line"><span>Student ID:</span> <span>{details.get("student_id")}</span></div>' if details.get('student_id') and not details.get('guest_name') else ''}
             
             <div class="line total"><span>TOTAL:</span> <span>₹{row['amount']}</span></div>
             <div class="line"><span>Mode:</span> <span>{row['payment_mode']}</span></div>
