@@ -569,12 +569,27 @@ def get_student_report(student_id):
 def export_data():
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM bills")
+    c.execute("SELECT * FROM bills ORDER BY date DESC")
     rows = c.fetchall()
     
-    output = "Bill No,Date,Amount,Mode\n"
+    # BOM for Excel compatibility with UTF-8
+    output = "\ufeffBill No,Date,Name,Student ID,Meal Type,Amount,Mode,User Type\n"
+    
     for row in rows:
-        output += f"{row['bill_no']},{row['date']},{row['amount']},{row['payment_mode']}\n"
+        try:
+            d = json.loads(row['details'])
+            name = d.get('guest_name', 'N/A')
+            sid = d.get('student_id', '-')
+            meal = d.get('meal_type', '-')
+            utype = d.get('user_type', '-')
+            
+            # Sanitize CSV fields (remove commas to prevent breaking columns)
+            name = str(name).replace(',', ' ')
+            meal = str(meal).replace(',', ' ')
+            
+            output += f"{row['bill_no']},{row['date']},{name},{sid},{meal},{row['amount']},{row['payment_mode']},{utype}\n"
+        except Exception as e:
+            output += f"{row['bill_no']},{row['date']},Error Parsing Details,-,-,{row['amount']},{row['payment_mode']},Error\n"
     
     conn.close()
     
@@ -582,7 +597,7 @@ def export_data():
     return Response(
         output,
         mimetype="text/csv",
-        headers={"Content-disposition": "attachment; filename=sales_report.csv"}
+        headers={"Content-disposition": f"attachment; filename=daily_report_{datetime.date.today()}.csv"}
     )
 
 # --- API: Backup ---
