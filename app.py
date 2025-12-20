@@ -573,7 +573,8 @@ def export_data():
     rows = c.fetchall()
     
     # BOM for Excel compatibility with UTF-8
-    output = "\ufeffBill No,Date,Name,Student ID,Meal Type,Amount,Mode,User Type\n"
+    # Added separate Date and Time columns
+    output = "\ufeffBill No,Date,Time,Name,Student ID,Meal Type,Amount,Mode,User Type\n"
     
     for row in rows:
         try:
@@ -583,13 +584,23 @@ def export_data():
             meal = d.get('meal_type', '-')
             utype = d.get('user_type', '-')
             
-            # Sanitize CSV fields (remove commas to prevent breaking columns)
+            # Sanitize CSV fields
             name = str(name).replace(',', ' ')
             meal = str(meal).replace(',', ' ')
             
-            output += f"{row['bill_no']},{row['date']},{name},{sid},{meal},{row['amount']},{row['payment_mode']},{utype}\n"
+            # Split Date and Time (Assumes format YYYY-MM-DD HH:MM:SS)
+            full_date = row['date']
+            try:
+                date_part, time_part = full_date.split(' ')
+            except:
+                date_part, time_part = full_date, ''
+
+            # Format Bill No as text for Excel (prepend tab)
+            bill_no = f"\t{row['bill_no']}"
+            
+            output += f"{bill_no},{date_part},{time_part},{name},{sid},{meal},{row['amount']},{row['payment_mode']},{utype}\n"
         except Exception as e:
-            output += f"{row['bill_no']},{row['date']},Error Parsing Details,-,-,{row['amount']},{row['payment_mode']},Error\n"
+            output += f"\t{row['bill_no']},{row['date']},,Error Parsing Details,-,-,{row['amount']},{row['payment_mode']},Error\n"
     
     conn.close()
     
