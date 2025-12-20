@@ -523,30 +523,27 @@ function initOperator() {
 
 window.toggleUserType = function () {
     const type = document.querySelector('input[name="userType"]:checked').value;
+
+    // Toggle Inputs
+    const h = document.getElementById('input-hostel'); if (h) h.classList.toggle('hidden', type !== 'hostel');
+    const s = document.getElementById('input-staff'); if (s) s.classList.toggle('hidden', type !== 'staff');
+    const n = document.getElementById('input-normal'); if (n) n.classList.toggle('hidden', type !== 'normal');
+
+    // Toggle Payment Options
+    const accBtn = document.querySelector('button[data-value="Account"]');
+    const cashBtn = document.querySelector('button[data-value="Cash"]');
+    const upiBtn = document.querySelector('button[data-value="UPI"]');
+
     if (type === 'hostel') {
-        const h = document.getElementById('input-hostel'); if (h) h.classList.remove('hidden');
-        const s = document.getElementById('input-staff'); if (s) s.classList.add('hidden');
-        const n = document.getElementById('input-normal'); if (n) n.classList.add('hidden');
-
-        // Auto-select Account for Hostel
-        const accBtn = document.querySelector('button[data-value="Account"]');
-        if (accBtn) accBtn.click();
-    } else if (type === 'staff') {
-        const h = document.getElementById('input-hostel'); if (h) h.classList.add('hidden');
-        const s = document.getElementById('input-staff'); if (s) s.classList.remove('hidden');
-        const n = document.getElementById('input-normal'); if (n) n.classList.add('hidden');
-
-        // Auto-select Cash for Staff (default)
-        const cashBtn = document.querySelector('button[data-value="Cash"]');
-        if (cashBtn) cashBtn.click();
+        // Hostel: Account Only
+        if (accBtn) { accBtn.style.display = 'inline-block'; accBtn.click(); }
+        if (cashBtn) cashBtn.style.display = 'none';
+        if (upiBtn) upiBtn.style.display = 'none';
     } else {
-        const h = document.getElementById('input-hostel'); if (h) h.classList.add('hidden');
-        const s = document.getElementById('input-staff'); if (s) s.classList.add('hidden');
-        const n = document.getElementById('input-normal'); if (n) n.classList.remove('hidden');
-
-        // Auto-select Cash for Guest
-        const cashBtn = document.querySelector('button[data-value="Cash"]');
-        if (cashBtn) cashBtn.click();
+        // Others: Cash/UPI Only
+        if (accBtn) accBtn.style.display = 'none';
+        if (cashBtn) { cashBtn.style.display = 'inline-block'; cashBtn.click(); }
+        if (upiBtn) upiBtn.style.display = 'inline-block';
     }
 }
 
