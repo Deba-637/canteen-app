@@ -536,7 +536,7 @@ window.toggleUserType = function () {
 
     if (type === 'hostel') {
         // Hostel: Account Only
-        if (accBtn) { accBtn.style.display = 'inline-block'; accBtn.click(); }
+        if (accBtn) { accBtn.parentElement.style.display = ''; accBtn.style.display = 'inline-block'; accBtn.click(); }
         if (cashBtn) cashBtn.style.display = 'none';
         if (upiBtn) upiBtn.style.display = 'none';
     } else {
