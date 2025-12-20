@@ -558,15 +558,25 @@ window.generateBill = async function () {
 
     if (userType === 'hostel') {
         studentId = document.getElementById('bill-student-id').value;
-        if (!studentId) {
-            const val = document.getElementById('bill-student-search').value;
+        const val = document.getElementById('bill-student-search').value;
+
+        // Try to recover ID if missing
+        if (!studentId && val) {
             const match = val.match(/\[ID: (\d+)\]/);
             if (match) studentId = match[1];
-
-            // Extract Name: "Name (Roll) [ID: 1]" -> match anything before " ("
-            const nameMatch = val.match(/^(.*?) \(/);
-            if (nameMatch) guestName = nameMatch[1];
         }
+
+        // Always extract Name if valid string format: "Name (Roll..."
+        if (val) {
+            const nameMatch = val.match(/^(.*?) \(/);
+            if (nameMatch) {
+                guestName = nameMatch[1];
+            } else {
+                // specific cleanup if needed, or if manual entry?
+                // For now, if they select from list, it matches.
+            }
+        }
+
         if (!studentId) return alert("Select a valid student.");
     } else if (userType === 'staff') {
         guestName = document.getElementById('bill-staff-name').value;
