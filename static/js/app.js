@@ -255,8 +255,12 @@ window.deleteOperator = async function (id) {
     }
 }
 
-window.exportCSV = function () {
-    window.location.href = '/api/export';
+window.exportCSV = function (type) {
+    let url = '/api/export';
+    if (type) {
+        url += '?type=' + type;
+    }
+    window.location.href = url;
 }
 
 window.updateExcel = async function () {
@@ -359,13 +363,20 @@ async function loadReports() {
 window.viewStudentReport = async function (id) {
     try {
         const res = await fetch(`/api/reports/student/${id}`);
-        if (!res.ok) {
-            const err = await res.json();
-            alert("Error: " + (err.error || "Failed to load report"));
-            return;
+        const text = await res.text();
+
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch (jsonErr) {
+            console.error("Server returned non-JSON:", text);
+            throw new Error("Server returned invalid data (likely error 500): " + text.substring(0, 100));
         }
 
-        const data = await res.json();
+        if (!res.ok) {
+            alert("Error: " + (data.error || "Failed to load report"));
+            return;
+        }
         const std = data.student;
 
         // Populate Meta
@@ -397,13 +408,18 @@ window.viewStudentReport = async function (id) {
         const moneyTbody = document.getElementById('report-money-list');
         moneyTbody.innerHTML = '';
         if (data.transactions.length === 0) {
-            moneyTbody.innerHTML = '<tr><td colspan="5">No transactions found.</td></tr>';
+            moneyTbody.innerHTML = '<tr><td colspan="6">No transactions found.</td></tr>';
         } else {
             // Header needs update to support mixed types? 
             // Current header: Date | Bill No | Item | Amount | Mode
             // For Payment: Date | - | Fee Payment | Amount | Mode
             data.transactions.forEach(t => {
                 const isPay = t.type === 'Payment';
+                // Only show delete button if it has an ID (real transaction vs aggregated bill) and is a Payment
+                // Actually our logic handles Food from student_transactions too now, but let's stick to cleaning payments first.
+                // Or better: valid for any 'student_transactions' entry (which has ID).
+                const canDelete = t.id !== undefined;
+
                 moneyTbody.innerHTML += `
                     <tr style="background-color: ${isPay ? '#e8f8f5' : 'inherit'}">
                         <td>${t.date}</td>
@@ -411,6 +427,9 @@ window.viewStudentReport = async function (id) {
                         <td>${t.item}</td>
                         <td style="color: ${t.color}; font-weight: bold;">₹${t.amount}</td>
                         <td>${t.mode}</td>
+                        <td>
+                            ${canDelete ? `<button onclick="window.deleteTransaction(${t.id}, ${id})" class="danger-btn" style="padding: 2px 8px; font-size: 0.8em;">&times;</button>` : ''}
+                        </td>
                     </tr>
                 `;
             });
@@ -421,7 +440,8 @@ window.viewStudentReport = async function (id) {
 
     } catch (e) {
         console.error(e);
-        alert("Network Error loading report");
+        // Try to show more details if it's not just a generic fetch error
+        alert("Report Error: " + e.message + "\nCheck console for details.");
     }
 }
 
@@ -431,6 +451,24 @@ window.openPayModal = function (id, name) {
     document.getElementById('pay-amount').value = '';
     document.getElementById('pay-modal').classList.remove('hidden');
     document.getElementById('pay-amount').focus();
+}
+
+window.deleteTransaction = async function (txId, studentId) {
+    if (confirm("Are you sure you want to delete/undo this transaction?")) {
+        try {
+            const res = await fetch(`/api/transactions?id=${txId}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.status === 'success') {
+                alert("Transaction Reversed.");
+                viewStudentReport(studentId); // Reload report
+                loadStudents(); // Reload background list
+            } else {
+                alert("Error: " + data.error);
+            }
+        } catch (e) {
+            alert("Network Error: " + e);
+        }
+    }
 }
 
 window.submitPayment = async function () {
@@ -600,6 +638,7 @@ window.generateBill = async function () {
             })
         });
         const data = await res.json();
+
         if (data.status === 'success') {
             const width = 400; const height = 600;
             const left = (screen.width - width) / 2;

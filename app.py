@@ -9,7 +9,9 @@ app = Flask(__name__, static_url_path='', static_folder='static')
 app.secret_key = os.environ.get('SECRET_KEY', 'dev_secret_key_keep_it_safe')
 
 # Railway Persistent Storage Logic
-if os.path.exists('/app/data'):
+if os.environ.get('DB_PATH'):
+    DB_FILE = os.environ.get('DB_PATH')
+elif os.path.exists('/app/data'):
     DB_FILE = '/app/data/canteen.db'
 else:
     DB_FILE = 'canteen.db'
@@ -144,6 +146,9 @@ def init_db():
             if 'type' not in trans_cols:
                 print("Migrating: Adding type column to student_transactions...")
                 c.execute("ALTER TABLE student_transactions ADD COLUMN type TEXT DEFAULT 'Payment'")
+            if 'remarks' not in trans_cols:
+                print("Migrating: Adding remarks column to student_transactions...")
+                c.execute("ALTER TABLE student_transactions ADD COLUMN remarks TEXT")
                 
         except Exception as e: print(f"Migration Error (Bills/Trans): {e}")
         
@@ -310,13 +315,22 @@ def pay_student_fees():
         
         c.execute("UPDATE students SET remaining_amount=?, amount_paid=? WHERE id=?", (new_remaining, new_paid, s_id))
         
+        # 1.1 Update Payment Status
+        new_status = 'Unpaid'
+        if new_remaining <= 0:
+            new_status = 'Paid'
+        elif new_paid > 0:
+            new_status = 'Partial' 
+            
+        c.execute("UPDATE students SET payment_status=? WHERE id=?", (new_status, s_id))
+
         # 2. Record Transaction
         date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         c.execute("INSERT INTO student_transactions (student_id, amount, date, mode, remarks) VALUES (?, ?, ?, ?, ?)",
                   (s_id, amount, date_str, mode, remarks))
                   
         conn.commit()
-        return jsonify({'status': 'success', 'new_remaining': new_remaining})
+        return jsonify({'status': 'success', 'new_remaining': new_remaining, 'new_status': new_status})
     except Exception as e:
         print(f"Payment Error: {e}")
         return jsonify({'error': str(e)}), 500
@@ -543,12 +557,13 @@ def get_student_report(student_id):
         
     # Add Payments (Type: Credit)
     c.execute("SELECT * FROM student_transactions WHERE student_id=? ORDER BY date DESC", (student_id,))
-    payments = c.fetchall()
+    payments = [dict(row) for row in c.fetchall()]
     for p in payments:
         transactions.append({
-            'type': 'Payment',
+            'id': p['id'],
+            'type': p.get('type', 'Payment'),
             'date': p['date'],
-            'item': 'Fee Payment',
+            'item': p.get('remarks') or 'Fee Payment', # Use remarks if available
             'amount': p['amount'],
             'mode': p['mode'],
             'color': 'green' # Debt decreases
@@ -565,11 +580,91 @@ def get_student_report(student_id):
         'transactions': transactions
     })
 
+@app.route('/api/transactions', methods=['DELETE'])
+def delete_transaction():
+    t_id = request.args.get('id')
+    if not t_id: return jsonify({'error': 'Missing ID'}), 400
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    try:
+        # 1. Fetch Transaction
+        c.execute("SELECT * FROM student_transactions WHERE id=?", (t_id,))
+        row = c.fetchone()
+        if not row: return jsonify({'error': 'Transaction not found'}), 404
+        tx = dict(row)
+        
+        # 2. Validation (Only allow deleting Payments for now, or careful handling of Food)
+        # We only safe delete 'Payment' types to reverse debt. 
+        # If we delete 'Food' (account), we need to reduce debt.
+        
+        s_id = tx['student_id']
+        amount = tx['amount']
+        type_ = tx.get('type', 'Payment')
+        
+        # 3. Reverse Balance
+        c.execute("SELECT remaining_amount, amount_paid FROM students WHERE id=?", (s_id,))
+        student = c.fetchone()
+        if not student: return jsonify({'error': 'Student not found'}), 404
+        
+        curr_remaining = student['remaining_amount'] or 0
+        curr_paid = student['amount_paid'] or 0
+        
+        if type_ == 'Payment':
+            # It was a payment (reduced debt). Reversing it means:
+            # Increase Debt (Remaining)
+            # Decrease Amount Paid
+            new_remaining = curr_remaining + amount
+            new_paid = curr_paid - amount
+        elif type_ == 'Food':
+            # It was a food charge (increased debt). Reversing it means:
+            # Decrease Debt
+            # Amount Paid unaffected
+            new_remaining = curr_remaining - amount
+            new_paid = curr_paid
+        else:
+            # Fallback if type is missing (legacy) - assume Payment if it's in this table and not food?
+            # Safest to assume Payment if we stick to the UI button only appearing for Payments
+            new_remaining = curr_remaining + amount
+            new_paid = curr_paid - amount
+
+        # 4. Update Student
+        # Recalculate status
+        new_status = 'Unpaid'
+        if new_remaining <= 0:
+            new_status = 'Paid'
+        elif new_paid > 0:
+            new_status = 'Partial'
+            
+        c.execute("UPDATE students SET remaining_amount=?, amount_paid=?, payment_status=? WHERE id=?", 
+                  (new_remaining, new_paid, new_status, s_id))
+        
+        # 5. Delete Transaction
+        c.execute("DELETE FROM student_transactions WHERE id=?", (t_id,))
+        conn.commit()
+        
+        return jsonify({'status': 'success', 'message': 'Transaction reversed'})
+        
+    except Exception as e:
+        print(f"Delete Tx Error: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
 @app.route('/api/export')
 def export_data():
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM bills ORDER BY date DESC")
+    
+    export_type = request.args.get('type', 'all')
+    
+    if export_type == 'daily':
+        today = datetime.date.today().isoformat()
+        c.execute("SELECT * FROM bills WHERE date LIKE ? ORDER BY date DESC", (today + '%',))
+    else:
+        c.execute("SELECT * FROM bills ORDER BY date DESC")
+        
     rows = c.fetchall()
     
     # BOM for Excel compatibility with UTF-8
@@ -625,7 +720,9 @@ def backup_excel_api():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 # Initialize DB (Global - runs on gunicorn worker start)
-init_db()
+# Initialize DB (Global - runs on gunicorn worker start)
+if os.environ.get('FLASK_ENV') != 'testing':
+    init_db()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8000))

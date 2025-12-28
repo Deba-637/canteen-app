@@ -86,8 +86,11 @@
                 <div class="card">
                     <h4>Data Export</h4>
                     <p>Download all bill records or update Hostel Excel sheet.</p>
-                    <button onclick="exportCSV()" class="primary-btn"
-                        style="background:#27ae60; margin-bottom: 10px;">Download CSV</button>
+                    <button onclick="exportCSV('daily')" class="primary-btn"
+                        style="background:#27ae60; margin-bottom: 10px; width: 100%;">Download Today's Report
+                        (Daily)</button>
+                    <button onclick="exportCSV('all')" class="secondary-btn"
+                        style="margin-bottom: 10px; width: 100%;">Download Full History</button>
                     <button onclick="updateExcel()" class="primary-btn" style="background:#8e44ad;">Update Hostel
                         Excel</button>
                 </div>
@@ -127,6 +130,7 @@
                                 <th>Item</th>
                                 <th>Amount</th>
                                 <th>Mode</th>
+                                <th>Action</th>
                             </tr>
                         </thead>
                         <tbody id="report-money-list"></tbody>
