@@ -375,7 +375,7 @@ def create_bill():
     conn = get_db()
     c = conn.cursor()
     
-    bill_no = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    bill_no = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
     date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     # Save bill

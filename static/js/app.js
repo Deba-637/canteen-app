@@ -567,55 +567,111 @@ window.toggleUserType = function () {
     const s = document.getElementById('input-staff'); if (s) s.classList.toggle('hidden', type !== 'staff');
     const n = document.getElementById('input-normal'); if (n) n.classList.toggle('hidden', type !== 'normal');
 
-    // Toggle Payment Options
+    // Reset Meals to single default (Breakfast) to avoid confusion when switching
+    // active classes
+    document.querySelectorAll('#opt-meal-type .option-btn').forEach(b => b.classList.remove('active'));
+    const defBtn = document.querySelector('#opt-meal-type button[data-value="Breakfast"]');
+    if (defBtn) defBtn.classList.add('active');
+    document.getElementById('bill-meal-type').value = 'Breakfast';
+
+    // Toggle Payment Options & Amount Readonly
     const accBtn = document.querySelector('button[data-value="Account"]');
     const cashBtn = document.querySelector('button[data-value="Cash"]');
     const upiBtn = document.querySelector('button[data-value="UPI"]');
+    const amtInput = document.getElementById('bill-amount');
 
     if (type === 'hostel') {
-        // Hostel: Account Only
+        // Hostel: Account Only, Auto Price
         if (accBtn) { accBtn.parentElement.style.display = ''; accBtn.style.display = 'inline-block'; accBtn.click(); }
         if (cashBtn) cashBtn.style.display = 'none';
         if (upiBtn) upiBtn.style.display = 'none';
+
+        // Lock Amount
+        if (amtInput) amtInput.readOnly = true;
+        recalculateHostelTotal();
+
     } else {
-        // Others: Cash/UPI Only
+        // Others: Cash/UPI Only, Manual Price
         if (accBtn) accBtn.style.display = 'none';
         if (cashBtn) { cashBtn.style.display = 'inline-block'; cashBtn.click(); }
         if (upiBtn) upiBtn.style.display = 'inline-block';
+
+        // Unlock Amount
+        if (amtInput) amtInput.readOnly = false;
+        selectAmount(50, document.querySelector('#opt-amount button[onclick*="50"]')); // Default 50
     }
+}
+
+window.selectMeal = function (meal, btn) {
+    const userType = document.querySelector('input[name="userType"]:checked').value;
+    const isHostel = userType === 'hostel';
+
+    if (isHostel) {
+        // Multi-Select Logic
+        btn.classList.toggle('active');
+
+        // Update hidden input (comma joined)
+        const activeBtns = document.querySelectorAll('#opt-meal-type .option-btn.active');
+        const selected = Array.from(activeBtns).map(b => b.getAttribute('data-value'));
+
+        // If nothing selected, force select the clicked one back (at least one needed)
+        if (selected.length === 0) {
+            btn.classList.add('active');
+            selected.push(meal);
+        }
+
+        document.getElementById('bill-meal-type').value = selected.join(',');
+        recalculateHostelTotal();
+
+    } else {
+        // Single Select Logic
+        document.querySelectorAll('#opt-meal-type .option-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('bill-meal-type').value = meal;
+    }
+}
+
+function recalculateHostelTotal() {
+    // Pricing: Breakfast=20, Lunch=40, Dinner=40
+    const activeBtns = document.querySelectorAll('#opt-meal-type .option-btn.active');
+    let total = 0;
+    activeBtns.forEach(btn => {
+        const m = btn.getAttribute('data-value');
+        if (m === 'Breakfast') total += 20;
+        else if (m === 'Lunch') total += 40;
+        else if (m === 'Dinner') total += 40;
+    });
+    document.getElementById('bill-amount').value = total;
 }
 
 window.generateBill = async function () {
     const userType = document.querySelector('input[name="userType"]:checked').value;
-    const meal = document.getElementById('bill-meal-type').value;
-    const amount = document.getElementById('bill-amount').value;
-    const mode = document.getElementById('bill-payment-mode').value;
+    // For manual types, amount is total; for hostel, amount is calculated per meal.
+    // However, the backend expects a single amount per bill.
+    // So for Hostel Multi-Meal, we must generate MULTIPLE bills.
 
+    const mealRaw = document.getElementById('bill-meal-type').value; // "Breakfast,Lunch"
+    const meals = mealRaw.split(',');
+
+    // Validate inputs
     let studentId = null;
     let guestName = null;
+    let mode = document.getElementById('bill-payment-mode').value;
 
     if (userType === 'hostel') {
         studentId = document.getElementById('bill-student-id').value;
         const val = document.getElementById('bill-student-search').value;
-
-        // Try to recover ID if missing
         if (!studentId && val) {
             const match = val.match(/\[ID: (\d+)\]/);
             if (match) studentId = match[1];
         }
-
-        // Always extract Name if valid string format: "Name (Roll..."
+        // Extract Name for Receipt
         if (val) {
             const nameMatch = val.match(/^(.*?) \(/);
-            if (nameMatch) {
-                guestName = nameMatch[1];
-            } else {
-                // specific cleanup if needed, or if manual entry?
-                // For now, if they select from list, it matches.
-            }
+            if (nameMatch) guestName = nameMatch[1];
         }
-
         if (!studentId) return alert("Select a valid student.");
+
     } else if (userType === 'staff') {
         guestName = document.getElementById('bill-staff-name').value;
         if (!guestName) return alert("Enter Staff Name.");
@@ -623,40 +679,97 @@ window.generateBill = async function () {
         guestName = document.getElementById('bill-guest-name').value || "Guest";
     }
 
+    // Processing Loop
+    // For non-hostel, it's just one meal (length 1). Amount is manual.
+    // For hostel, it can be multiple. Amount matches meal type.
+
+    const manualAmount = parseFloat(document.getElementById('bill-amount').value);
+
     try {
-        const res = await fetch('/api/bill', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                user_type: userType,
-                student_id: studentId,
-                guest_name: guestName,
-                meal_type: meal,
-                amount: amount,
-                payment_mode: mode,
-                operator_id: currentOperatorId
-            })
-        });
-        const data = await res.json();
+        for (const meal of meals) {
+            let amount = manualAmount;
 
-        if (data.status === 'success') {
-            const width = 400; const height = 600;
-            const left = (screen.width - width) / 2;
-            const top = (screen.height - height) / 2;
-            window.open(`/bill-view/${data.bill_no}`, 'BillPrint', `width=${width},height=${height},top=${top},left=${left}`);
-
-            // Clear inputs
-            if (userType === 'normal') document.getElementById('bill-guest-name').value = '';
-            if (userType === 'staff') document.getElementById('bill-staff-name').value = '';
+            // Override Amount for Hostel (Per Meal)
             if (userType === 'hostel') {
-                document.getElementById('bill-student-search').value = '';
-                document.getElementById('bill-student-id').value = '';
+                if (meal === 'Breakfast') amount = 20;
+                else if (meal === 'Lunch') amount = 40;
+                else if (meal === 'Dinner') amount = 40;
             }
-            loadLiveStats();
-        } else {
-            alert("Error: " + data.message);
+
+            // 1. Create Bill in Backend
+            const res = await fetch('/api/bill', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_type: userType,
+                    student_id: studentId,
+                    guest_name: guestName,
+                    meal_type: meal,
+                    amount: amount,
+                    payment_mode: mode,
+                    operator_id: currentOperatorId
+                })
+            });
+
+            const data = await res.json();
+            if (data.status !== 'success') {
+                alert(`Error creating bill for ${meal}: ${data.message}`);
+                continue;
+            }
+
+            // 2. Silent Print
+            // Construct Payload for Python Service
+            const printPayload = {
+                bill_no: data.bill_no,
+                date: new Date().toLocaleString(),
+                operator: currentOperatorName || 'Staff',
+                customer: {
+                    name: guestName,
+                    type: userType
+                },
+                items: [
+                    { name: meal, qty: 1, price: amount }
+                ],
+                total: amount
+            };
+
+            try {
+                await fetch('http://localhost:5001/print', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(printPayload)
+                });
+            } catch (printErr) {
+                console.error("Silent Print Failed:", printErr);
+                alert("Bill Saved, but Printer Service Unreachable!\nMake sure 'python print_service.py' is running.");
+            }
         }
-    } catch (e) { console.error(e); alert("Network Error"); }
+
+        // Success feedback messages (accumulated above if loop alerts, but here for general success)
+
+        // Clear inputs
+        if (userType === 'normal') document.getElementById('bill-guest-name').value = '';
+        if (userType === 'staff') document.getElementById('bill-staff-name').value = '';
+        if (userType === 'hostel') {
+            document.getElementById('bill-student-search').value = '';
+            document.getElementById('bill-student-id').value = '';
+            // Reset to default breakfast cleanly
+            document.querySelectorAll('#opt-meal-type .option-btn').forEach(b => b.classList.remove('active'));
+            const defBtn = document.querySelector('#opt-meal-type button[data-value="Breakfast"]');
+            if (defBtn) defBtn.classList.add('active');
+            document.getElementById('bill-meal-type').value = 'Breakfast';
+            recalculateHostelTotal();
+        }
+
+        loadLiveStats();
+        // Feedback
+        const statusDiv = document.createElement('div');
+        statusDiv.textContent = "✔ Done";
+        statusDiv.style.cssText = "position: fixed; top: 20px; right: 20px; background: #2ecc71; color: white; padding: 15px; border-radius: 5px; z-index: 1000; box-shadow: 0 4px 6px rgba(0,0,0,0.1);";
+        document.body.appendChild(statusDiv);
+        setTimeout(() => statusDiv.remove(), 2000);
+
+    } catch (e) { console.error(e); alert("Network Error during billing"); }
 }
 
 async function loadOperatorData() {
