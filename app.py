@@ -484,25 +484,34 @@ def get_meal_report():
     c = conn.cursor()
     today = datetime.date.today().isoformat()
     
-    c.execute("SELECT sum(breakfast), sum(lunch), sum(dinner) FROM meals WHERE date=?", (today,))
-    row = c.fetchone()
-
-    # Calculate Daily Revenue
-    total_revenue = 0
-    try:
-        c.execute("SELECT sum(amount) FROM bills WHERE date LIKE ?", (today + '%',))
-        rev_row = c.fetchone()
-        if rev_row and rev_row[0]:
-             total_revenue = rev_row[0]
-    except Exception as e:
-        print(f"Revenue Calc Error: {e}")
+    # Fetch all bills for today to aggregate stats manually (covers all user types)
+    c.execute("SELECT details, amount FROM bills WHERE date LIKE ?", (today + '%',))
+    daily_bills = c.fetchall()
     
+    counts = {'Breakfast': 0, 'Lunch': 0, 'Dinner': 0}
+    total_revenue = 0.0
+    
+    for b in daily_bills:
+        # Revenue
+        total_revenue += b['amount'] if b['amount'] else 0
+        
+        # Meal Count
+        try:
+            if b['details']:
+                d = json.loads(b['details'])
+                m_type = d.get('meal_type')
+                # Handle Case Sensitivity or exact match (Frontend sends Title Case)
+                if m_type in counts:
+                    counts[m_type] += 1
+        except Exception as e:
+            print(f"Stats Parse Error: {e}")
+            
     conn.close()
     
     return jsonify({
-        'Breakfast': row[0] or 0,
-        'Lunch': row[1] or 0,
-        'Dinner': row[2] or 0,
+        'Breakfast': counts['Breakfast'],
+        'Lunch': counts['Lunch'],
+        'Dinner': counts['Dinner'],
         'revenue': total_revenue
     })
 
