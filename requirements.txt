@@ -2,3 +2,6 @@ flask
 requests
 openpyxl
 gunicorn
+python-escpos
+flask-cors
+pyusb

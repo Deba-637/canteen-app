@@ -17,8 +17,9 @@
 
         <nav class="tabs">
             <button onclick="showTab('admin-students')" class="active">Students</button>
-            <button onclick="showTab('admin-operators')">Operators</button>
-            <button onclick="showTab('admin-reports')">Reports</button>
+            <button onclick="showTab('admin-operators')" class="secondary-btn">Operators</button>
+            <button onclick="showTab('admin-staff')" class="secondary-btn">Staff</button>
+            <button onclick="showTab('admin-reports')" class="secondary-btn">Reports</button>
         </nav>
 
         <section id="admin-students" class="tab-content">
@@ -28,7 +29,7 @@
                     style="width: 200px; border: 2px solid var(--primary-color);">
                 <input type="hidden" id="edit-std-id">
                 <input type="text" id="new-std-name" placeholder="Student Name">
-                <input type="text" id="new-std-roll" placeholder="Roll No" style="width: 100px;">
+                <input type="text" id="new-std-regd" placeholder="Regd No" style="width: 100px;">
                 <input type="text" id="new-std-phone" placeholder="Phone" style="width: 120px;">
                 <input type="number" id="new-std-remaining" placeholder="Remaining Amount (Debt)" style="width: 150px;">
                 <select id="new-std-mode">
@@ -44,7 +45,7 @@
                     <tr>
                         <th>#</th>
                         <th>Name</th>
-                        <th>Roll No</th>
+                        <th>Regd No</th>
                         <th>Phone</th>
                         <th>Branch</th>
                         <th>B / L / D Count</th>
@@ -76,6 +77,56 @@
             </table>
         </section>
 
+        <section id="admin-staff" class="tab-content">
+            <h3>Manage Staff</h3>
+            <div class="controls">
+                <input type="text" id="new-staff-name" placeholder="Staff Name">
+                <input type="text" id="new-staff-dept" placeholder="Dept">
+                <input type="text" id="new-staff-phone" placeholder="Phone">
+                <button onclick="addStaff()" class="primary-btn">Add Staff</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Dept</th>
+                        <th>Phone</th>
+                        <th>Balance (Due)</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="admin-staff-list"></tbody>
+            </table>
+        </section>
+
+        <!-- New Staff Report Modal -->
+        <div id="staff-report-modal" class="modal hidden">
+            <div class="modal-content" style="max-width: 800px;">
+                <span class="close-btn"
+                    onclick="document.getElementById('staff-report-modal').classList.add('hidden')">&times;</span>
+                <h3>Staff Ledger Report</h3>
+                <div id="staff-report-meta"></div>
+
+                <div class="report-section">
+                    <h4>Transaction History (Food & Payments)</h4>
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Type</th>
+                                <th>Amount</th>
+                                <th>Mode</th>
+                                <th>Remarks</th>
+                            </tr>
+                        </thead>
+                        <tbody id="staff-report-list"></tbody>
+                    </table>
+                </div>
+                <button onclick="document.getElementById('staff-report-modal').classList.add('hidden')"
+                    class="primary-btn" style="margin-top: 10px;">Close</button>
+            </div>
+        </div>
+
         <section id="admin-reports" class="tab-content">
             <h3>System Reports</h3>
             <div class="report-cards">
@@ -83,6 +134,30 @@
                     <h4>Today's Meals</h4>
                     <div id="admin-meal-stats">Loading...</div>
                 </div>
+                <div class="card">
+                    <h4>Monthly Report</h4>
+                    <p>Aggregated bill for all hostel students.</p>
+                    <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+                        <input type="number" id="report-year" placeholder="YYYY" style="width: 80px;" value="2025">
+                        <select id="report-month" style="flex: 1;">
+                            <option value="01">Jan</option>
+                            <option value="02">Feb</option>
+                            <option value="03">Mar</option>
+                            <option value="04">Apr</option>
+                            <option value="05">May</option>
+                            <option value="06">Jun</option>
+                            <option value="07">Jul</option>
+                            <option value="08">Aug</option>
+                            <option value="09">Sep</option>
+                            <option value="10">Oct</option>
+                            <option value="11">Nov</option>
+                            <option value="12">Dec</option>
+                        </select>
+                    </div>
+                    <button onclick="viewMonthlyReport()" class="primary-btn" style="width: 100%;">View Report</button>
+                    <!-- Container for results? Or Modal? Modal is cleaner -->
+                </div>
+
                 <div class="card">
                     <h4>Data Export</h4>
                     <p>Download all bill records or update Hostel Excel sheet.</p>
@@ -105,7 +180,49 @@
                 onclick="document.getElementById('report-modal').classList.add('hidden')">&times;</span>
             <div id="report-content">
                 <h3>Student Report</h3>
+                <input type="hidden" id="report-student-id">
+
+                <div class="filter-bar"
+                    style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; background: #eef; padding: 10px; border-radius: 5px;">
+                    <!-- Date Range (New) -->
+                    <label>From:</label>
+                    <input type="date" id="std-report-start" class="admin-input" style="padding: 5px;">
+                    <label>To:</label>
+                    <input type="date" id="std-report-end" class="admin-input" style="padding: 5px;">
+
+                    <span style="border-left: 2px solid #ccc; height: 20px; margin: 0 5px;"></span>
+
+                    <!-- Existing Month/Year -->
+                    <label>Or Month:</label>
+                    <select id="std-report-month" style="padding: 5px;">
+                        <option value="">All Months</option>
+                        <option value="01">Jan</option>
+                        <option value="02">Feb</option>
+                        <option value="03">Mar</option>
+                        <option value="04">Apr</option>
+                        <option value="05">May</option>
+                        <option value="06">Jun</option>
+                        <option value="07">Jul</option>
+                        <option value="08">Aug</option>
+                        <option value="09">Sep</option>
+                        <option value="10">Oct</option>
+                        <option value="11">Nov</option>
+                        <option value="12">Dec</option>
+                    </select>
+                    <input type="number" id="std-report-year" value="2025" style="width: 70px; padding: 5px;">
+
+                    <button onclick="filterStudentReport()" class="primary-btn" style="padding: 5px 15px;">Go</button>
+                    <button onclick="resetStudentReport()" class="secondary-btn"
+                        style="padding: 5px 10px;">Reset</button>
+                </div>
+
                 <div id="report-meta"></div>
+
+                <div id="report-summary"
+                    style="display: flex; gap: 10px; margin-bottom: 15px; background: #f8f9fa; padding: 10px; border-radius: 5px;">
+                    <!-- Loading... -->
+                </div>
+
                 <div class="report-section">
                     <h4>Meal History</h4>
                     <table class="report-table">
@@ -139,6 +256,32 @@
             </div>
             <button onclick="document.getElementById('report-modal').classList.add('hidden')" class="primary-btn"
                 style="margin-top: 10px;">Close</button>
+        </div>
+    </div>
+
+    <!-- Monthly Report Modal -->
+    <div id="monthly-report-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 900px;">
+            <span class="close-btn"
+                onclick="document.getElementById('monthly-report-modal').classList.add('hidden')">&times;</span>
+            <h3 id="monthly-report-title">Monthly Report</h3>
+            <div style="overflow-y: auto; max-height: 400px;">
+                <table class="report-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Regd No</th>
+                            <th>Breakfast</th>
+                            <th>Lunch</th>
+                            <th>Dinner</th>
+                            <th>Total Cost (₹)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="monthly-report-list"></tbody>
+                </table>
+            </div>
+            <button onclick="exportMonthlyCSV()" class="primary-btn"
+                style="margin-top: 10px; background-color: #27ae60;">Download CSV</button>
         </div>
     </div>
 
@@ -177,7 +320,7 @@
                 <label>Name: <input type="text" id="edit-modal-name" placeholder="Full Name"
                         style="width: 100%;"></label>
                 <div style="display: flex; gap: 1rem;">
-                    <label style="flex: 1;">Roll No: <input type="text" id="edit-modal-roll" placeholder="Roll No"
+                    <label style="flex: 1;">Regd No: <input type="text" id="edit-modal-regd" placeholder="Regd No"
                             style="width: 100%;"></label>
                     <label style="flex: 1;">Dept/Branch: <input type="text" id="edit-modal-dept" placeholder="Dept"
                             style="width: 100%;"></label>

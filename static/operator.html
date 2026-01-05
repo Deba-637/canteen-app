@@ -15,83 +15,283 @@
             <button onclick="logout()" class="danger-btn">Logout</button>
         </header>
 
-        <div class="billing-container">
-            <div class="billing-form">
-                <h3>New Order</h3>
+        <style>
+            .dashboard-layout {
+                display: flex;
+                gap: 20px;
+                align-items: flex-start;
+            }
 
-                <div class="user-type-toggle">
-                    <label><input type="radio" name="userType" value="hostel" checked onchange="toggleUserType()">
-                        Hostel Student</label>
-                    <label><input type="radio" name="userType" value="staff" onchange="toggleUserType()">
-                        College Staff</label>
-                    <label><input type="radio" name="userType" value="normal" onchange="toggleUserType()"> Normal
-                        Person</label>
+            .main-panel {
+                flex: 3;
+                background: white;
+                padding: 20px;
+                border-radius: 8px;
+                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            }
+
+            .side-panel {
+                flex: 1;
+                background: white;
+                padding: 20px;
+                border-radius: 8px;
+                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+                position: sticky;
+                top: 20px;
+            }
+
+            .nav-menu {
+                display: flex;
+                gap: 10px;
+                margin-bottom: 20px;
+                border-bottom: 2px solid #eee;
+                padding-bottom: 10px;
+            }
+
+            .nav-item {
+                padding: 10px 20px;
+                background: #f8f9fa;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                cursor: pointer;
+                font-weight: bold;
+                color: #555;
+                transition: all 0.2s;
+            }
+
+            .nav-item.active {
+                background: var(--primary-color);
+                /* Uses variable from style.css */
+                color: white;
+                border-color: var(--primary-color);
+            }
+
+            .nav-item:hover:not(.active) {
+                background: #e9ecef;
+            }
+
+            .hidden-section {
+                display: none !important;
+            }
+
+            .active-section {
+                display: block !important;
+                animation: fadeIn 0.3s ease-out;
+            }
+        </style>
+
+        <div class="dashboard-layout">
+            <!-- Left Side: Main Work Area -->
+            <div class="main-panel">
+                <div class="nav-menu">
+                    <button onclick="showOpSection('billing')" id="btn-sec-billing" class="nav-item active">Food
+                        Billing</button>
+                    <button onclick="showOpSection('payment')" id="btn-sec-payment" class="nav-item">Student
+                        Payment</button>
                 </div>
 
-                <!-- Hostel Student Inputs with Search -->
-                <div id="input-hostel">
-                    <label>Search Student (Name / ID):</label>
-                    <input list="student-list" id="bill-student-search" placeholder="Type to search..."
-                        autocomplete="off" autofocus>
-                    <datalist id="student-list"></datalist>
-                    <input type="hidden" id="bill-student-id">
-                </div>
+                <div id="sec-billing" class="active-section">
+                    <!-- Existing Billing Form -->
+                    <div class="billing-form" style="box-shadow: none; padding: 0;">
+                        <h3>New Order</h3>
 
-                <!-- College Staff Inputs -->
-                <div id="input-staff" class="hidden">
-                    <label>Staff Name:</label>
-                    <input type="text" id="bill-staff-name" placeholder="Enter Staff Name">
-                </div>
+                        <div class="user-type-toggle">
+                            <label><input type="radio" name="userType" value="hostel" checked
+                                    onchange="toggleUserType()">
+                                Hostel Student</label>
+                            <label><input type="radio" name="userType" value="staff" onchange="toggleUserType()">
+                                College Staff</label>
+                            <label><input type="radio" name="userType" value="normal" onchange="toggleUserType()">
+                                Normal
+                                Person</label>
+                        </div>
 
-                <!-- Normal Person Inputs -->
-                <div id="input-normal" class="hidden">
-                    <label>Guest Name (Optional):</label>
-                    <input type="text" id="bill-guest-name">
-                </div>
+                        <!-- Hostel Student Inputs with Search -->
+                        <div id="input-hostel">
+                            <label>Search Student (Name / ID):</label>
+                            <div style="display: flex; gap: 10px;">
+                                <input list="student-list" id="bill-student-search" placeholder="Type to search..."
+                                    autocomplete="off" autofocus style="flex: 1;">
+                                <button onclick="viewStudentReport(document.getElementById('bill-student-id').value)"
+                                    class="secondary-btn" style="padding: 0 15px;">View Report</button>
+                            </div>
+                            <datalist id="student-list"></datalist>
+                            <input type="hidden" id="bill-student-id">
+                        </div>
 
-                <div class="meal-selection">
-                    <label>Meal Type:</label>
-                    <div class="option-group" id="opt-meal-type">
-                        <button class="option-btn active" data-value="Breakfast"
-                            onclick="selectMeal('Breakfast', this)">Breakfast</button>
-                        <button class="option-btn" data-value="Lunch" onclick="selectMeal('Lunch', this)">Lunch</button>
-                        <button class="option-btn" data-value="Dinner"
-                            onclick="selectMeal('Dinner', this)">Dinner</button>
+                        <!-- College Staff Inputs -->
+                        <div id="input-staff" class="hidden">
+                            <label>Search Staff:</label>
+                            <input list="staff-list" id="bill-staff-search" placeholder="Type to search..."
+                                autocomplete="off">
+                            <datalist id="staff-list"></datalist>
+                            <input type="hidden" id="bill-staff-id">
+                        </div>
+
+                        <!-- Normal Person Inputs -->
+                        <div id="input-normal" class="hidden">
+                            <label>Guest Name (Optional):</label>
+                            <input type="text" id="bill-guest-name">
+                        </div>
+
+                        <div class="meal-selection">
+                            <label>Meal Type:</label>
+                            <div class="option-group" id="opt-meal-type">
+                                <button class="option-btn active" data-value="Breakfast"
+                                    onclick="selectMeal('Breakfast', this)">Breakfast</button>
+                                <button class="option-btn" data-value="Lunch"
+                                    onclick="selectMeal('Lunch', this)">Lunch</button>
+                                <button class="option-btn" data-value="Dinner"
+                                    onclick="selectMeal('Dinner', this)">Dinner</button>
+                            </div>
+                            <input type="hidden" id="bill-meal-type" value="Breakfast">
+
+                            <div id="grp-amount">
+                                <label style="margin-top: 1rem;">Amount (₹):</label>
+                                <div class="option-group" id="opt-amount">
+                                    <button class="option-btn" onclick="selectAmount(20, this)">20</button>
+                                    <button class="option-btn" onclick="selectAmount(30, this)">30</button>
+                                    <button class="option-btn" onclick="selectAmount(40, this)">40</button>
+                                    <button class="option-btn active" onclick="selectAmount(50, this)">50</button>
+                                    <button class="option-btn" onclick="selectAmount(60, this)">60</button>
+                                    <button class="option-btn" onclick="selectAmount('other', this)">Other</button>
+                                </div>
+                                <input type="number" id="bill-amount" value="50" style="margin-top: 5px;">
+                            </div>
+
+                            <label style="margin-top: 1rem;">Payment Mode:</label>
+                            <div class="option-group" id="opt-payment-mode">
+                                <button class="option-btn active" data-value="Cash"
+                                    onclick="selectOption('bill-payment-mode', 'Cash', this)">Cash</button>
+                                <button class="option-btn" data-value="UPI"
+                                    onclick="selectOption('bill-payment-mode', 'UPI', this)">UPI</button>
+                                <button class="option-btn" data-value="Account"
+                                    onclick="selectOption('bill-payment-mode', 'Account', this)">Account</button>
+                            </div>
+                            <input type="hidden" id="bill-payment-mode" value="Cash">
+                        </div>
+
+                        <button onclick="generateBill()" class="primary-btn large-btn">PRINT BILL</button>
                     </div>
-                    <input type="hidden" id="bill-meal-type" value="Breakfast">
+                </div> <!-- End sec-billing -->
 
-                    <label style="margin-top: 1rem;">Amount (₹):</label>
-                    <div class="option-group" id="opt-amount">
-                        <button class="option-btn" onclick="selectAmount(20, this)">20</button>
-                        <button class="option-btn" onclick="selectAmount(30, this)">30</button>
-                        <button class="option-btn" onclick="selectAmount(40, this)">40</button>
-                        <button class="option-btn active" onclick="selectAmount(50, this)">50</button>
-                        <button class="option-btn" onclick="selectAmount(60, this)">60</button>
-                        <button class="option-btn" onclick="selectAmount('other', this)">Other</button>
-                    </div>
-                    <input type="number" id="bill-amount" value="50" style="margin-top: 5px;">
+                <div id="sec-payment" class="hidden-section">
+                    <div class="billing-form" style="box-shadow: none; padding: 0;">
+                        <h3>Student Payment</h3>
+                        <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Search for a student to accept
+                            payment.</p>
 
-                    <label style="margin-top: 1rem;">Payment Mode:</label>
-                    <div class="option-group" id="opt-payment-mode">
-                        <button class="option-btn active" data-value="Cash"
-                            onclick="selectOption('bill-payment-mode', 'Cash', this)">Cash</button>
-                        <button class="option-btn" data-value="UPI"
-                            onclick="selectOption('bill-payment-mode', 'UPI', this)">UPI</button>
-                        <button class="option-btn" data-value="Account"
-                            onclick="selectOption('bill-payment-mode', 'Account', this)">Account</button>
+                        <label>Search Student:</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input list="student-list" id="pay-student-search" placeholder="Type name or ID..."
+                                autocomplete="off" style="flex: 1;">
+                            <button onclick="window.checkAndShowReport('pay-student-search')" class="secondary-btn"
+                                style="padding: 0 15px;">View Report</button>
+                        </div>
+                        <button onclick="initiateOpPayment()" class="primary-btn" style="margin-top: 10px;">Select &
+                            Pay</button>
                     </div>
-                    <input type="hidden" id="bill-payment-mode" value="Cash">
                 </div>
-
-                <button onclick="generateBill()" class="primary-btn large-btn">PRINT BILL</button>
             </div>
 
-            <div class="live-stats">
-                <h3>Today's Stats</h3>
-                <div id="op-meal-stats">
-                    Loading stats...
+            <!-- Right Side: Stats Sidebar -->
+            <div class="side-panel">
+                <div class="live-stats"
+                    style="margin-top: 0; box-shadow: none; padding: 0; background: none; color: var(--text-color);">
+                    <h3
+                        style="margin-top: 0; border-bottom: 2px solid #eee; padding-bottom: 10px; color: var(--primary-dark);">
+                        Today's Stats</h3>
+                    <div id="op-meal-stats">
+                        Loading stats...
+                    </div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Student Payment Modal -->
+    <div id="op-pay-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close" onclick="document.getElementById('op-pay-modal').classList.add('hidden')">&times;</span>
+            <h3>Receive Payment</h3>
+            <p id="op-pay-student-name">Student: ...</p>
+            <input type="hidden" id="op-pay-student-id">
+
+            <label>Amount (₹):</label>
+            <input type="number" id="op-pay-amount" placeholder="Enter Amount">
+
+            <label>Mode:</label>
+            <select id="op-pay-mode">
+                <option value="Cash">Cash</option>
+                <option value="UPI">UPI</option>
+            </select>
+
+            <button onclick="submitOpPayment()" class="primary-btn" style="width: 100%; margin-top: 15px;">Confirm
+                Payment</button>
+        </div>
+    </div>
+
+    <!-- Report Modal -->
+    <div id="report-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 800px;">
+            <span class="close" onclick="document.getElementById('report-modal').classList.add('hidden')">&times;</span>
+            <div id="report-content">
+                <h3>Student Report</h3>
+                <input type="hidden" id="report-student-id">
+
+                <div class="filter-bar"
+                    style="display: flex; gap: 5px; margin-bottom: 10px; padding: 10px; background: #eef; border-radius: 5px; align-items: center;">
+                    <label style="font-weight: bold;">From:</label>
+                    <input type="date" id="std-report-start" style="padding: 5px;">
+
+                    <label style="font-weight: bold;">To:</label>
+                    <input type="date" id="std-report-end" style="padding: 5px;">
+
+                    <button onclick="filterStudentReport()" class="primary-btn" style="padding: 5px 15px;">Go</button>
+                    <button onclick="resetStudentReport()" class="secondary-btn"
+                        style="padding: 5px 10px;">Reset</button>
+                </div>
+
+                <div id="report-meta"></div>
+
+                <div id="report-summary"
+                    style="display: flex; gap: 10px; margin-bottom: 15px; background: #f8f9fa; padding: 10px; border-radius: 5px;">
+                    <!-- Loading... -->
+                </div>
+
+                <div class="report-section">
+                    <h4>Meal History</h4>
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Breakfast</th>
+                                <th>Lunch</th>
+                                <th>Dinner</th>
+                            </tr>
+                        </thead>
+                        <tbody id="report-meals-list"></tbody>
+                    </table>
+                </div>
+                <div class="report-section">
+                    <h4>Financial History</h4>
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Bill No</th>
+                                <th>Item</th>
+                                <th>Amount</th>
+                                <th>Mode</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="report-money-list"></tbody>
+                    </table>
+                </div>
+            </div>
+            <button onclick="document.getElementById('report-modal').classList.add('hidden')" class="primary-btn"
+                style="margin-top: 10px;">Close</button>
         </div>
     </div>
 

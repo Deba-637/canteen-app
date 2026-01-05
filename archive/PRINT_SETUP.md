@@ -20,6 +20,13 @@ pip install flask flask-cors python-escpos pyusb
     - Select "WinUSB" in the target box.
     - Click "Replace Driver" or "Install Driver".
 
+3.  **Critical:** You likely need the `libusb-1.0.dll` file.
+    - Download the latest release from: https://github.com/libusb/libusb/releases
+    - Extract the zip.
+    - Go to `VS2019/MS64/dll` (or similar folder for 64-bit).
+    - Copy `libusb-1.0.dll` and paste it into this project folder (`c:\Users\deban\.gemini\antigravity\scratch\canteen project`).
+
+
 ## 3. Configure PID/VID (Optional)
 If the printer is not detected automatically or falls back to "DUMMY" mode:
 1. Find your Printer's Vendor ID (VID) and Product ID (PID) from Device Manager or Zadig.

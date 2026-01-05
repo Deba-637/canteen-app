@@ -91,13 +91,14 @@ window.showTab = function (tabId) {
     // Load Data
     if (tabId === 'admin-students') loadStudents();
     if (tabId === 'admin-operators') loadOperators();
+    if (tabId === 'admin-staff') loadStaff();
     if (tabId === 'admin-reports') loadReports();
 }
 
 window.addStudent = async function () {
     const id = document.getElementById('edit-std-id').value;
     const name = document.getElementById('new-std-name').value;
-    const roll = document.getElementById('new-std-roll').value;
+    const regd_no = document.getElementById('new-std-regd').value;
     const phone = document.getElementById('new-std-phone').value;
     // const status = document.getElementById('new-std-status').value; // Deprecated
     const remaining = document.getElementById('new-std-remaining').value || 0;
@@ -111,7 +112,7 @@ window.addStudent = async function () {
         const method = id ? 'PUT' : 'POST';
         const body = {
             name: name,
-            roll: roll,
+            regd_no: regd_no,
             phone: phone,
 
             // payment_status: status,
@@ -137,7 +138,7 @@ window.addStudent = async function () {
         // Reset form
         document.getElementById('edit-std-id').value = '';
         document.getElementById('new-std-name').value = '';
-        document.getElementById('new-std-roll').value = '';
+        document.getElementById('new-std-regd').value = '';
         document.getElementById('new-std-phone').value = '';
         document.getElementById('new-std-branch').value = '';
         document.getElementById('new-std-amount').value = '';
@@ -152,7 +153,7 @@ window.editStudent = function (student) {
     // Populate Modal
     document.getElementById('edit-modal-id').value = student.id;
     document.getElementById('edit-modal-name').value = student.name;
-    document.getElementById('edit-modal-roll').value = student.roll || '';
+    document.getElementById('edit-modal-regd').value = student.regd_no || '';
     document.getElementById('edit-modal-dept').value = student.dept || '';
     document.getElementById('edit-modal-phone').value = student.phone || '';
     document.getElementById('edit-modal-remaining').value = student.remaining_amount || 0;
@@ -164,7 +165,7 @@ window.editStudent = function (student) {
 window.submitEditStudent = async function () {
     const id = document.getElementById('edit-modal-id').value;
     const name = document.getElementById('edit-modal-name').value;
-    const roll = document.getElementById('edit-modal-roll').value;
+    const regd_no = document.getElementById('edit-modal-regd').value;
     const dept = document.getElementById('edit-modal-dept').value;
     const phone = document.getElementById('edit-modal-phone').value;
     const remaining = document.getElementById('edit-modal-remaining').value;
@@ -178,7 +179,7 @@ window.submitEditStudent = async function () {
             body: JSON.stringify({
                 id: id,
                 name: name,
-                roll: roll,
+                regd_no: regd_no,
                 dept: dept,
                 phone: phone,
                 remaining_amount: remaining
@@ -299,7 +300,7 @@ async function loadStudents() {
                     <tr>
                         <td>${index + 1} (ID: ${s.id})</td>
                         <td>${s.name}</td>
-                        <td>${s.roll || '-'}</td>
+                        <td>${s.regd_no || '-'}</td>
                         <td>${s.phone || '-'}</td>
                         <td>${s.dept || '-'}</td>
                         <td>B:${s.breakfast_count} / L:${s.lunch_count} / D:${s.dinner_count}</td>
@@ -360,9 +361,30 @@ async function loadReports() {
     } catch (e) { console.error("Load Reports Fault", e); }
 }
 
-window.viewStudentReport = async function (id) {
+// --- Student Report Logic ---
+
+window.viewStudentReport = async function (id, month = '', year = '', startDate = '', endDate = '') {
+    // Store ID for filtering
+    if (id) document.getElementById('report-student-id').value = id;
+    else id = document.getElementById('report-student-id').value;
+
+    if (!id) return;
+
     try {
-        const res = await fetch(`/api/reports/student/${id}`);
+        let url = `/api/reports/student/${id}`;
+        // Support both methods or prioritize date range
+        let params = [];
+        if (startDate || endDate) {
+            if (startDate) params.push(`start_date=${startDate}`);
+            if (endDate) params.push(`end_date=${endDate}`);
+        } else if (month && year) {
+            params.push(`month=${month}`);
+            params.push(`year=${year}`);
+        }
+
+        if (params.length > 0) url += '?' + params.join('&');
+
+        const res = await fetch(url);
         const text = await res.text();
 
         let data;
@@ -370,7 +392,7 @@ window.viewStudentReport = async function (id) {
             data = JSON.parse(text);
         } catch (jsonErr) {
             console.error("Server returned non-JSON:", text);
-            throw new Error("Server returned invalid data (likely error 500): " + text.substring(0, 100));
+            throw new Error("Server returned invalid data");
         }
 
         if (!res.ok) {
@@ -381,10 +403,20 @@ window.viewStudentReport = async function (id) {
 
         // Populate Meta
         document.getElementById('report-meta').innerHTML = `
-            <p><strong>Name:</strong> ${std.name} (${std.roll || 'N/A'})</p>
+            <p><strong>Name:</strong> ${std.name} (${std.regd_no || 'N/A'})</p>
             <p><strong>Remaining (Debt):</strong> <span style="color:red">₹${std.remaining_amount || 0}</span></p>
             <p><strong>Total Paid:</strong> ₹${std.amount_paid || 0}</p>
         `;
+
+        // Populate Summary
+        if (data.summary) {
+            document.getElementById('report-summary').innerHTML = `
+                <div style="flex: 1; text-align: center;"><strong>Breakfast</strong><br>${data.summary.breakfast}</div>
+                <div style="flex: 1; text-align: center;"><strong>Lunch</strong><br>${data.summary.lunch}</div>
+                <div style="flex: 1; text-align: center;"><strong>Dinner</strong><br>${data.summary.dinner}</div>
+                <div style="flex: 1; text-align: center; border-left: 1px solid #ddd;"><strong>Est. Cost</strong><br>₹${data.summary.total_cost}</div>
+            `;
+        }
 
         // Populate Meals
         const mealTbody = document.getElementById('report-meals-list');
@@ -443,6 +475,37 @@ window.viewStudentReport = async function (id) {
         // Try to show more details if it's not just a generic fetch error
         alert("Report Error: " + e.message + "\nCheck console for details.");
     }
+}
+
+window.filterStudentReport = function () {
+    // Check for Date Range Inputs (Operator/Admin)
+    const start = document.getElementById('std-report-start') ? document.getElementById('std-report-start').value : '';
+    const end = document.getElementById('std-report-end') ? document.getElementById('std-report-end').value : '';
+
+    // Check for Month/Year Inputs (Admin)
+    const month = document.getElementById('std-report-month') ? document.getElementById('std-report-month').value : '';
+    const year = document.getElementById('std-report-year') ? document.getElementById('std-report-year').value : '';
+
+    // Logic: If user touched dates, use dates.
+    if (start || end) {
+        if (start && end && start > end) return alert("Start Date must be before End Date");
+        // Pass both; backend handles empty strings as open-ended ranges
+        viewStudentReport(null, '', '', start, end);
+    } else if (month || year) {
+        if (month && !year) return alert("Please enter a year");
+        if (!month && year) return alert("Please select a month");
+        viewStudentReport(null, month, year);
+    } else {
+        alert("Please select dates or month/year to filter.");
+    }
+}
+
+window.resetStudentReport = function () {
+    if (document.getElementById('std-report-start')) document.getElementById('std-report-start').value = "";
+    if (document.getElementById('std-report-end')) document.getElementById('std-report-end').value = "";
+    if (document.getElementById('std-report-month')) document.getElementById('std-report-month').value = "";
+    if (document.getElementById('std-report-year')) document.getElementById('std-report-year').value = "2025";
+    viewStudentReport(null);
 }
 
 window.openPayModal = function (id, name) {
@@ -521,7 +584,7 @@ function initAdmin() {
     }
 
     // Enter Key Listener for Add Student
-    const inputs = document.querySelectorAll('#new-std-name, #new-std-roll, #new-std-branch, #new-std-amount, #new-std-remaining, #new-std-mode');
+    const inputs = document.querySelectorAll('#new-std-name, #new-std-regd, #new-std-branch, #new-std-amount, #new-std-remaining, #new-std-mode');
     console.log("Attached Enter Listener to " + inputs.length + " inputs");
 
     inputs.forEach(input => {
@@ -555,6 +618,9 @@ function initOperator() {
         searchInput.addEventListener('change', handleStudentSearch);
         searchInput.addEventListener('input', handleStudentSearch);
     }
+
+    // Initialize UI State (ensure correct visibility for default selection)
+    toggleUserType();
 }
 // (Functions for operator like generateBill kept global or attached to window if needed, or defined here)
 // Currently initOperator logic was defining them on window. Let's make them global to be safe.
@@ -566,6 +632,10 @@ window.toggleUserType = function () {
     const h = document.getElementById('input-hostel'); if (h) h.classList.toggle('hidden', type !== 'hostel');
     const s = document.getElementById('input-staff'); if (s) s.classList.toggle('hidden', type !== 'staff');
     const n = document.getElementById('input-normal'); if (n) n.classList.toggle('hidden', type !== 'normal');
+
+    // Toggle Amount Section visibility
+    const amtGrp = document.getElementById('grp-amount');
+    if (amtGrp) amtGrp.classList.toggle('hidden', type === 'hostel' || type === 'staff');
 
     // Reset Meals to single default (Breakfast) to avoid confusion when switching
     // active classes
@@ -587,6 +657,16 @@ window.toggleUserType = function () {
         if (upiBtn) upiBtn.style.display = 'none';
 
         // Lock Amount
+        if (amtInput) amtInput.readOnly = true;
+        recalculateHostelTotal();
+
+    } else if (type === 'staff') {
+        // Staff: Account Only (Modified Request)
+        if (accBtn) { accBtn.parentElement.style.display = ''; accBtn.style.display = 'inline-block'; accBtn.click(); }
+        if (cashBtn) cashBtn.style.display = 'none';
+        if (upiBtn) upiBtn.style.display = 'none';
+
+        // Lock Amount and Calc
         if (amtInput) amtInput.readOnly = true;
         recalculateHostelTotal();
 
@@ -628,6 +708,8 @@ window.selectMeal = function (meal, btn) {
         document.querySelectorAll('#opt-meal-type .option-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         document.getElementById('bill-meal-type').value = meal;
+        // If Staff, update price
+        if (userType === 'staff') recalculateHostelTotal();
     }
 }
 
@@ -673,8 +755,17 @@ window.generateBill = async function () {
         if (!studentId) return alert("Select a valid student.");
 
     } else if (userType === 'staff') {
-        guestName = document.getElementById('bill-staff-name').value;
-        if (!guestName) return alert("Enter Staff Name.");
+        const val = document.getElementById('bill-staff-search').value;
+        if (!val) return alert("Select a Staff member.");
+
+        const match = val.match(/\[ID: (\d+)\]/);
+        if (match) {
+            studentId = match[1];
+            const nameMatch = val.match(/^(.*?) \(/);
+            if (nameMatch) guestName = nameMatch[1];
+        } else {
+            return alert("Select valid Staff from list");
+        }
     } else {
         guestName = document.getElementById('bill-guest-name').value || "Guest";
     }
@@ -719,13 +810,17 @@ window.generateBill = async function () {
 
             // 2. Silent Print
             // Construct Payload for Python Service
+            const now = new Date();
+            const dateStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getFullYear()).slice(-2)}`;
+
             const printPayload = {
                 bill_no: data.bill_no,
-                date: new Date().toLocaleString(),
+                date: dateStr,
                 operator: currentOperatorName || 'Staff',
                 customer: {
                     name: guestName,
-                    type: userType
+                    type: userType,
+                    id: studentId
                 },
                 items: [
                     { name: meal, qty: 1, price: amount }
@@ -749,7 +844,7 @@ window.generateBill = async function () {
 
         // Clear inputs
         if (userType === 'normal') document.getElementById('bill-guest-name').value = '';
-        if (userType === 'staff') document.getElementById('bill-staff-name').value = '';
+        if (userType === 'staff') document.getElementById('bill-staff-search').value = '';
         if (userType === 'hostel') {
             document.getElementById('bill-student-search').value = '';
             document.getElementById('bill-student-id').value = '';
@@ -774,6 +869,7 @@ window.generateBill = async function () {
 
 async function loadOperatorData() {
     try {
+        // Load Students
         const res = await fetch('/api/students');
         const data = await res.json();
         const datalist = document.getElementById('student-list');
@@ -781,14 +877,27 @@ async function loadOperatorData() {
             datalist.innerHTML = '';
             data.forEach(s => {
                 const opt = document.createElement('option');
-                // Improved format: Name (Roll: X) [ID: Y]
-                const rollStr = s.roll ? `Roll: ${s.roll}` : 'No Roll';
-                opt.value = `${s.name} (${rollStr}) [ID: ${s.id}]`;
+                // Improved format: Name (Regd: X) [ID: Y]
+                const regdStr = s.regd_no ? `Regd: ${s.regd_no}` : 'No Regd';
+                opt.value = `${s.name} (${regdStr}) [ID: ${s.id}]`;
                 datalist.appendChild(opt);
             });
         }
+
+        // Load Staff (New)
+        const resStaff = await fetch('/api/staff');
+        const staffData = await resStaff.json();
+        const staffList = document.getElementById('staff-list');
+        if (staffList) {
+            staffList.innerHTML = '';
+            staffData.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = `${s.name} (${s.dept || 'Staff'}) [ID: ${s.id}]`;
+                staffList.appendChild(opt);
+            });
+        }
         loadLiveStats();
-    } catch (e) { console.error("Op Data Error", e); }
+    } catch (e) { console.error("Load Op Data Error", e); }
 }
 
 function handleStudentSearch(e) {
@@ -848,5 +957,279 @@ window.selectAmount = function (value, btnElement) {
         // If user types, we keep "Other" selected visually
     } else {
         input.value = value;
+    }
+}
+
+// --- Operator Logic (Extras) ---
+window.showOpSection = function (sectionId) {
+    // Hide all first
+    document.getElementById('sec-billing').classList.add('hidden-section');
+    document.getElementById('sec-billing').classList.remove('active-section');
+    document.getElementById('sec-payment').classList.add('hidden-section');
+    document.getElementById('sec-payment').classList.remove('active-section');
+
+    // Reset Buttons
+    document.getElementById('btn-sec-billing').classList.remove('active');
+    document.getElementById('btn-sec-payment').classList.remove('active');
+
+    if (sectionId === 'billing') {
+        document.getElementById('sec-billing').classList.remove('hidden-section');
+        document.getElementById('sec-billing').classList.add('active-section');
+        document.getElementById('btn-sec-billing').classList.add('active');
+    } else if (sectionId === 'payment') {
+        document.getElementById('sec-payment').classList.remove('hidden-section');
+        document.getElementById('sec-payment').classList.add('active-section');
+        document.getElementById('btn-sec-payment').classList.add('active');
+    }
+}
+
+window.initiateOpPayment = function () {
+    const val = document.getElementById('pay-student-search').value;
+    const match = val.match(/\[ID: (\d+)\]/);
+
+    if (!match) return alert("Please search and select a student first.");
+
+    const id = match[1];
+    const nameMatch = val.match(/^(.*?) \(/);
+    const name = nameMatch ? nameMatch[1] : "Unknown";
+
+    document.getElementById('op-pay-student-id').value = id;
+    document.getElementById('op-pay-student-name').textContent = "Student: " + name;
+    document.getElementById('op-pay-amount').value = '';
+
+    document.getElementById('op-pay-modal').classList.remove('hidden');
+    document.getElementById('op-pay-amount').focus();
+}
+
+window.submitOpPayment = async function () {
+    const id = document.getElementById('op-pay-student-id').value;
+    const amount = document.getElementById('op-pay-amount').value;
+    const mode = document.getElementById('op-pay-mode').value;
+
+    if (!amount || amount <= 0) return alert("Enter valid amount");
+
+    try {
+        const res = await fetch('/api/students/pay', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                student_id: id,
+                amount: amount,
+                mode: mode,
+                operator_id: sessionStorage.getItem('canteen_op_id')
+            })
+        });
+
+        const data = await res.json();
+        if (data.status === 'success') {
+            alert("Payment Successful");
+            document.getElementById('op-pay-modal').classList.add('hidden');
+            document.getElementById('pay-student-search').value = '';
+        } else {
+            alert("Error: " + data.error);
+        }
+    } catch (e) { alert("Network Error: " + e); }
+}
+
+// --- Staff Logic ---
+window.loadStaff = async function () {
+    try {
+        const res = await fetch('/api/staff', { cache: 'no-store' });
+        const data = await res.json();
+        const tbody = document.getElementById('admin-staff-list');
+        if (tbody) {
+            tbody.innerHTML = '';
+            data.forEach(s => {
+                const sData = JSON.stringify(s).replace(/"/g, "&quot;");
+                const balanceColor = s.balance > 0 ? 'red' : 'green';
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${s.name}</td>
+                        <td>${s.dept || '-'}</td>
+                        <td>${s.phone || '-'}</td>
+                        <td style="color:${balanceColor}; font-weight:bold;">₹${s.balance || 0}</td>
+                        <td style="color:${balanceColor}; font-weight:bold;">₹${s.balance || 0}</td>
+                        <td>
+                            <button onclick="window.viewStaffReport(${s.id})" class="secondary-btn" style="padding: 5px 10px; font-size: 0.8em; margin-right: 5px;">Report</button>
+                            <button onclick="window.deleteStaff(${s.id})" class="danger-btn">Delete</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+    } catch (e) { console.error("Load Staff Error", e); }
+}
+
+window.addStaff = async function () {
+    const name = document.getElementById('new-staff-name').value;
+    const dept = document.getElementById('new-staff-dept').value;
+    const phone = document.getElementById('new-staff-phone').value;
+
+    if (!name) return alert("Staff Name is required");
+
+    try {
+        const res = await fetch('/api/staff', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, dept, phone })
+        });
+        if (res.ok) {
+            document.getElementById('new-staff-name').value = '';
+            document.getElementById('new-staff-dept').value = '';
+            document.getElementById('new-staff-phone').value = '';
+            loadStaff();
+            alert("Staff Added Successfully");
+        } else {
+            alert("Error adding staff");
+        }
+    } catch (e) { alert("Network Error: " + e); }
+}
+
+window.deleteStaff = async function (id) {
+    if (confirm("Delete this staff member? This will remove their history.")) {
+        try {
+            const res = await fetch(`/api/staff?id=${id}`, { method: 'DELETE' });
+            if (res.ok) {
+                loadStaff();
+            } else {
+                alert("Failed to delete staff");
+            }
+        } catch (e) { alert("Error: " + e); }
+    }
+}
+
+window.viewStaffReport = async function (id) {
+    try {
+        const res = await fetch(`/api/reports/staff/${id}`);
+        const data = await res.json();
+
+        if (data.error) return alert(data.error);
+
+        const s = data.staff;
+        const txs = data.transactions;
+
+        // Populate Meta
+        document.getElementById('staff-report-meta').innerHTML = `
+            <p><strong>Name:</strong> ${s.name} (${s.dept || 'Staff'})</p>
+            <p><strong>Balance (Due):</strong> <span style="color:${s.balance > 0 ? 'red' : 'green'}">₹${s.balance}</span></p>
+            <p><strong>Total Food:</strong> ₹${s.total_food} | <strong>Paid:</strong> ₹${s.total_paid}</p>
+        `;
+
+        const tbody = document.getElementById('staff-report-list');
+        tbody.innerHTML = '';
+
+        if (txs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5">No transactions found.</td></tr>';
+        } else {
+            txs.forEach(t => {
+                const isPay = t.type === 'Payment';
+                tbody.innerHTML += `
+                    <tr style="background-color: ${isPay ? '#e8f8f5' : 'inherit'}">
+                        <td>${t.date ? t.date.split(' ')[0] : '-'}</td>
+                        <td>${t.type}</td>
+                        <td style="font-weight:bold; color:${isPay ? 'green' : 'red'}">₹${t.amount}</td>
+                        <td>${t.mode || '-'}</td>
+                        <td>${t.remarks || '-'}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        document.getElementById('staff-report-modal').classList.remove('hidden');
+
+    } catch (e) {
+        console.error(e);
+        alert("Error loading staff report: " + e);
+    }
+}
+
+// --- Monthly Report Logic ---
+let currentMonthlyData = [];
+
+window.viewMonthlyReport = async function () {
+    const month = document.getElementById('report-month').value;
+    const year = document.getElementById('report-year').value;
+
+    if (!year) return alert("Enter Year");
+
+    try {
+        const btn = document.querySelector('button[onclick="viewMonthlyReport()"]');
+        if (btn) { btn.textContent = "Loading..."; btn.disabled = true; }
+
+        const res = await fetch(`/api/reports/monthly?month=${month}&year=${year}`);
+        const data = await res.json();
+
+        if (btn) { btn.textContent = "View Report"; btn.disabled = false; }
+
+        if (res.ok) {
+            currentMonthlyData = data;
+            const tbody = document.getElementById('monthly-report-list');
+            if (tbody) {
+                tbody.innerHTML = '';
+
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6">No data found for this period.</td></tr>';
+                } else {
+                    let totalBill = 0;
+                    data.forEach(r => {
+                        totalBill += r.total_cost;
+                        tbody.innerHTML += `
+                            <tr>
+                                <td>${r.name}</td>
+                                <td>${r.regd_no || '-'}</td>
+                                <td>${r.breakfast}</td>
+                                <td>${r.lunch}</td>
+                                <td>${r.dinner}</td>
+                                <td style="font-weight:bold;">₹${r.total_cost}</td>
+                            </tr>
+                        `;
+                    });
+                    // Total Row
+                    tbody.innerHTML += `
+                        <tr style="background-color: #f0f0f0; font-weight: bold;">
+                            <td colspan="5" style="text-align: right;">Total For Month:</td>
+                            <td>₹${totalBill}</td>
+                        </tr>
+                    `;
+                }
+            }
+
+            document.getElementById('monthly-report-title').textContent = `Monthly Report: ${month}/${year}`;
+            document.getElementById('monthly-report-modal').classList.remove('hidden');
+        } else {
+            alert("Error: " + data.error);
+        }
+    } catch (e) {
+        alert("Network Error: " + e);
+        const btn = document.querySelector('button[onclick="viewMonthlyReport()"]');
+        if (btn) btn.disabled = false;
+    }
+}
+
+window.exportMonthlyCSV = function () {
+    if (!currentMonthlyData || currentMonthlyData.length === 0) return alert("No data to export");
+
+    let csv = "Name,Regd No,Breakfast,Lunch,Dinner,Total Cost\n";
+    currentMonthlyData.forEach(r => {
+        csv += `"${r.name}","${r.regd_no}",${r.breakfast},${r.lunch},${r.dinner},${r.total_cost}\n`;
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.setAttribute('hidden', '');
+    a.setAttribute('href', url);
+    a.setAttribute('download', `monthly_report.csv`);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+window.checkAndShowReport = function (inputId) {
+    const val = document.getElementById(inputId).value;
+    const match = val.match(/\[ID: (\d+)\]/);
+    if (match) {
+        viewStudentReport(match[1]);
+    } else {
+        alert("Please select a student/staff first.");
     }
 }

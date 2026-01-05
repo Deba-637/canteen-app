@@ -33,7 +33,7 @@ def init_db():
         c.execute('''CREATE TABLE IF NOT EXISTS students (
                      id INTEGER PRIMARY KEY AUTOINCREMENT,
                      name TEXT NOT NULL,
-                     roll TEXT NOT NULL UNIQUE,
+                     regd_no TEXT NOT NULL UNIQUE,
                      dept TEXT NOT NULL,
                      phone TEXT,
                      payment_status TEXT DEFAULT 'Unpaid',
@@ -46,6 +46,12 @@ def init_db():
         try:
             c.execute("PRAGMA table_info(students)")
             stud_cols = [info[1] for info in c.fetchall()]
+            
+            # Migration: Rename roll to regd_no
+            if 'roll' in stud_cols and 'regd_no' not in stud_cols:
+                print("Migrating: Renaming roll column to regd_no...")
+                c.execute("ALTER TABLE students RENAME COLUMN roll TO regd_no")
+                
             if 'phone' not in stud_cols:
                 print("Migrating: Adding phone column to students table...")
                 c.execute("ALTER TABLE students ADD COLUMN phone TEXT")
@@ -87,6 +93,27 @@ def init_db():
                      username TEXT UNIQUE NOT NULL,
                      password TEXT NOT NULL, 
                      role TEXT DEFAULT 'operator'
+                     )''')
+                     
+        # Staff Table (New Feature)
+        c.execute('''CREATE TABLE IF NOT EXISTS staff (
+                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     name TEXT NOT NULL,
+                     dept TEXT,
+                     phone TEXT,
+                     created_at TEXT
+                     )''')
+
+        # Staff Transactions (New Feature)
+        c.execute('''CREATE TABLE IF NOT EXISTS staff_transactions (
+                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     staff_id INTEGER,
+                     amount REAL,
+                     date TEXT,
+                     mode TEXT,
+                     type TEXT, -- 'Food' or 'Payment'
+                     remarks TEXT,
+                     FOREIGN KEY(staff_id) REFERENCES staff(id)
                      )''')
                      
         # Migration: Add role column if missing (for existing DBs)
@@ -262,20 +289,20 @@ def manage_students():
                     break
             
             # Insert with explicit ID
-            c.execute("INSERT INTO students (id, name, roll, dept, phone, payment_status, payment_mode, amount_paid, remaining_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                      (new_id, data['name'], data.get('roll',''), data.get('dept',''), data.get('phone',''), 
+            c.execute("INSERT INTO students (id, name, regd_no, dept, phone, payment_status, payment_mode, amount_paid, remaining_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                      (new_id, data['name'], data.get('regd_no',''), data.get('dept',''), data.get('phone',''), 
                        data.get('payment_status','Unpaid'), data.get('payment_mode','Cash'), data.get('amount_paid', 0), data.get('remaining_amount', 0)))
             conn.commit()
             return jsonify({'status': 'success', 'id': new_id})
         except sqlite3.IntegrityError:
-            return jsonify({'error': 'Roll number already exists'}), 409
+            return jsonify({'error': 'Regd number already exists'}), 409
         finally:
             conn.close()
 
     if request.method == 'PUT':
         data = request.json
-        c.execute("UPDATE students SET name=?, roll=?, dept=?, phone=?, payment_status=?, payment_mode=?, amount_paid=?, remaining_amount=? WHERE id=?",
-                  (data['name'], data.get('roll'), data.get('dept'), data.get('phone'), 
+        c.execute("UPDATE students SET name=?, regd_no=?, dept=?, phone=?, payment_status=?, payment_mode=?, amount_paid=?, remaining_amount=? WHERE id=?",
+                  (data['name'], data.get('regd_no'), data.get('dept'), data.get('phone'), 
                    data.get('payment_status'), data.get('payment_mode'), data.get('amount_paid'), data.get('remaining_amount'), data['id']))
         conn.commit()
         conn.close()
@@ -419,6 +446,14 @@ def create_bill():
                 c.execute("INSERT INTO student_transactions (student_id, amount, date, mode, type, remarks) VALUES (?, ?, ?, ?, ?, ?)",
                           (s_id, data.get('amount'), date_str, 'Account', 'Food', f"Meal: {data.get('meal_type')}"))
 
+        # If Staff, record transaction if Account
+        elif data.get('user_type') == 'staff' and data.get('student_id'):
+            # Frontend sends staff_id as student_id field
+            st_id = data.get('student_id')
+            if data.get('payment_mode') == 'Account':
+                 c.execute("INSERT INTO staff_transactions (staff_id, amount, date, mode, type, remarks) VALUES (?, ?, ?, ?, ?, ?)",
+                          (st_id, data.get('amount'), date_str, 'Account', 'Food', f"Meal: {data.get('meal_type')}"))
+
         conn.commit()
         return jsonify({'status': 'success', 'bill_no': bill_no})
     except Exception as e:
@@ -456,7 +491,7 @@ def view_bill(bill_no):
     </head>
     <body onload="window.print()">
         <div class="bill-box">
-            <h2>CANTEEN RECEIPT</h2>
+            <h2>GATE Central Canteen</h2>
             <div class="meta">
                 Date: {row['date']}<br>
                 Bill No: {bill_no}
@@ -520,6 +555,10 @@ def get_student_report(student_id):
     conn = get_db()
     c = conn.cursor()
     
+    # Filter Params
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
     # 1. Student Details
     c.execute("SELECT * FROM students WHERE id=?", (student_id,))
     student = c.fetchone()
@@ -529,64 +568,132 @@ def get_student_report(student_id):
         
     student_data = dict(student)
     
+    # Build Query Conditions
+    meal_query = "SELECT date, breakfast, lunch, dinner FROM meals WHERE student_id=?"
+    meal_params = [student_id]
+    
+    trans_query = "SELECT * FROM student_transactions WHERE student_id=?"
+    trans_params = [student_id]
+    
+    if start_date:
+        meal_query += " AND date >= ?"
+        meal_params.append(start_date)
+        trans_query += " AND date >= ?"
+        trans_params.append(start_date)
+        
+    if end_date:
+        meal_query += " AND date <= ?"
+        meal_params.append(end_date)
+        # For timestamps, we want to include the whole end day
+        trans_query += " AND date <= ?"
+        trans_params.append(end_date + " 23:59:59")
+        
+    meal_query += " ORDER BY date DESC"
+    trans_query += " ORDER BY date DESC"
+    
     # 2. Meal History
-    c.execute("SELECT date, breakfast, lunch, dinner FROM meals WHERE student_id=? ORDER BY date DESC", (student_id,))
+    c.execute(meal_query, tuple(meal_params))
     meals = [dict(row) for row in c.fetchall()]
     
-    # 3. Transaction History (from bills table for now where student_id is recorded)
-    #    We extract amount and mode. 
-    #    Note: 'bills' stores JSON details. We can filter by details like '%"student_id": "123"%' or do param binding if we structured it better.
-    #    For now, scanning rows is inefficient but acceptable for small scale. 
-    #    Or better: we have a student_id in details JSON. SQL LIKE is tricky for JSON.
-    #    However, we are not storing student_id as a column in bills, only operator_id.
-    #    Wait! The 'bills' table doesn't have student_id column, only details JSON.
-    #    Let's use Python to filter for this student (inefficient but safe for now) OR rely on a future migration.
-    #    Actually current 'bills' schema: id, bill_no, date, operator_id, amount, details, payment_mode.
+    # 3. Transaction History
+    # Note: We are now primarily using student_transactions table which should ideally contain all Food (bills) and Payments.
+    # However, legacy or current implementation might splits them.
+    # In 'create_bill' (app.py:446), we INSERT into student_transactions for Account bills.
+    # So we should rely on student_transactions for REPORTING to be consistent.
+    # The previous logic tried to fetch FROM bills. Let's try to stick to student_transactions if possible.
+    # But wait, 'bills' table has the 'details' JSON. student_transactions has 'remarks' and 'type'.
+    # For now, let's stick to the previous hybrid approach BUT apply filters? 
+    # Actually, the previous code fetched ALL bills and filtered in Python. That's bad for perf but okay for small app.
+    # If we filter in Python, we can just continue that pattern for bills.
     
-    c.execute("SELECT * FROM bills ORDER BY date DESC")
-    all_bills = c.fetchall()
+    # Optimized approach: Use student_transactions for everything if it has the data.
+    # Checks: create_bill inserts into student_transactions for 'Account' mode.
+    # What if they paid Cash/UPI for a single meal?
+    # If a hostel student pays Cash for a meal, does it go to student_transactions?
+    # create_bill:421 checks if student.
+    # create_bill:440 checks if 'Account'. If so, updates debt and inserts transaction.
+    # If Cash/UPI, it just inserts into 'bills' and updates 'meals' count. It does NOT insert into student_transactions?
+    # If so, they are separate.
+    # But for a "Hostel Student Report" (Due/Paid/History), we usually care about their Account/Debt history.
+    # Cash meals don't affect debt. But they ARE part of "History" of what they ate?
+    # The prompt says "amount due , paid , history".
+    # Usually "History" implies the financial ledger.
+    # If I eat and pay cash immediately, it's not on the ledger.
+    # However, the previous implementation merged matches from 'bills'.
+    # Let's keep supporting that to be safe.
     
-    # Combined Transactions List
     transactions = []
     
-    # Add Bills (Type: Debit/Food)
+    # A. Fetch from Bills (Cash/UPI immediate purchases)
+    # Optimization: Only fetch bills if date range is small? No, fetch all for now, as before.
+    # But we can add SQL filter on date if params exist.
+    bill_q = "SELECT * FROM bills"
+    bill_p = []
+    if start_date:
+        bill_q += " WHERE date >= ?"
+        bill_p.append(start_date)
+    if end_date:
+        # If where clause exists append with AND, else WHERE
+        conn_word = " AND" if "WHERE" in bill_q else " WHERE"
+        bill_q += f"{conn_word} date <= ?"
+        bill_p.append(end_date + " 23:59:59")
+        
+    bill_q += " ORDER BY date DESC"
+    
+    c.execute(bill_q, tuple(bill_p))
+    all_bills = c.fetchall()
+    
     for b in all_bills:
+        # Skip Account bills (handled in student_transactions)
+        if b['payment_mode'] == 'Account': continue
+        
         try:
             d = json.loads(b['details'])
             if str(d.get('student_id')) == str(student_id):
                 transactions.append({
-                    'type': 'Food',
+                    'type': 'Food (Direct)',
                     'date': b['date'],
                     'item': d.get('meal_type', 'N/A'),
                     'amount': b['amount'],
                     'mode': b['payment_mode'],
-                    'color': 'red' # Debt increases (or paid immediately but shows consumption)
+                    'color': 'black' # Doesn't affect debt
                 })
         except: pass
-        
-    # Add Payments (Type: Credit)
-    c.execute("SELECT * FROM student_transactions WHERE student_id=? ORDER BY date DESC", (student_id,))
+
+    # B. Fetch from Student Transactions (Account Food + Payments)
+    c.execute(trans_query, tuple(trans_params))
     payments = [dict(row) for row in c.fetchall()]
+    
     for p in payments:
         transactions.append({
             'id': p['id'],
             'type': p.get('type', 'Payment'),
             'date': p['date'],
-            'item': p.get('remarks') or 'Fee Payment', # Use remarks if available
+            'item': p.get('remarks') or 'Fee Payment',
             'amount': p['amount'],
             'mode': p['mode'],
-            'color': 'green' # Debt decreases
+            'color': 'green' if p.get('type') == 'Payment' else 'red'
         })
         
-    # Sort combined list by date desc
+    # Sort combined
     transactions.sort(key=lambda x: x['date'], reverse=True)
     
     conn.close()
     
+    # Calculate Summary Stats
+    summary = {
+        'breakfast': sum(1 for m in meals if m['breakfast']),
+        'lunch': sum(1 for m in meals if m['lunch']),
+        'dinner': sum(1 for m in meals if m['dinner']),
+    }
+    # Cost: B=20, L=40, D=40
+    summary['total_cost'] = (summary['breakfast'] * 20) + (summary['lunch'] * 40) + (summary['dinner'] * 40)
+    
     return jsonify({
         'student': student_data,
         'meals': meals,
-        'transactions': transactions
+        'transactions': transactions,
+        'summary': summary
     })
 
 @app.route('/api/transactions', methods=['DELETE'])
@@ -717,23 +824,225 @@ def export_data():
 
 # --- API: Backup ---
 @app.route('/api/backup/excel', methods=['POST'])
-def backup_excel_api():
+def backup_excel_route():
     try:
-        from backup_excel import update_excel_sheet
-        if update_excel_sheet():
-            return jsonify({'status': 'success', 'message': 'Excel updated successfully.'})
-        else:
-            return jsonify({'status': 'error', 'message': 'Failed to update Excel.'}), 500
+        from backup_excel import backup_excel
+        filename = backup_excel()
+        return jsonify({'status': 'success', 'message': f'Backup created: {filename}'})
     except Exception as e:
         print(f"Backup Error: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/api/reports/monthly', methods=['GET'])
+def monthly_report():
+    month = request.args.get('month')
+    year = request.args.get('year')
+    
+    if not month or not year:
+        return jsonify({'error': 'Month and Year required'}), 400
+        
+    try:
+        conn = get_db()
+        c = conn.cursor()
+        
+        # Construct date pattern for LIKE query 'YYYY-MM-%'
+        # Ensure month is 0-padded
+        month_str = str(month).zfill(2)
+        date_pattern = f"{year}-{month_str}-%"
+        
+        # Query: Aggregate meals per student for this month
+        # We need Student Name, Regd No, and summed meal counts
+        query = '''
+            SELECT s.name, s.regd_no, 
+                   SUM(m.breakfast) as b_count, 
+                   SUM(m.lunch) as l_count, 
+                   SUM(m.dinner) as d_count
+            FROM meals m
+            JOIN students s ON m.student_id = s.id
+            WHERE m.date LIKE ?
+            GROUP BY m.student_id
+            ORDER BY s.name
+        '''
+        
+        c.execute(query, (date_pattern,))
+        rows = c.fetchall()
+        
+        report = []
+        for r in rows:
+            # Calculate cost (B=20, L=40, D=40) - Hardcoded pricing for now as per project logic
+            b = r['b_count'] or 0
+            l = r['l_count'] or 0
+            d = r['d_count'] or 0
+            total = (b * 20) + (l * 40) + (d * 40)
+            
+            report.append({
+                'name': r['name'],
+                'regd_no': r['regd_no'],
+                'breakfast': b,
+                'lunch': l,
+                'dinner': d,
+                'total_cost': total
+            })
+            
+        return jsonify(report)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/students/pay', methods=['POST'])
+def student_payment():
+    data = request.json
+    try:
+        conn = get_db()
+        conn.execute("PRAGMA foreign_keys = 1")
+        c = conn.cursor()
+        
+        student_id = data.get('student_id')
+        amount = float(data.get('amount', 0))
+        mode = data.get('mode', 'Cash')
+        op_id = data.get('operator_id')
+        
+        if not student_id or amount <= 0:
+            return jsonify({'error': 'Invalid data'}), 400
+
+        # Construct remarks
+        remarks = "Fee Payment"
+        if op_id:
+            # Optionally fetch operator name for better history?
+            # For now just ID is fine to avoid extra lookup overhead
+            remarks += f" (Op: {op_id})"
+
+        # 1. Update Student Balance (Remaining Amount decreases)
+        # amount_paid increases, remaining_amount decreases
+        c.execute("UPDATE students SET amount_paid = amount_paid + ?, remaining_amount = remaining_amount - ? WHERE id=?",
+                  (amount, amount, student_id))
+        
+        if c.rowcount == 0:
+             return jsonify({'error': 'Student not found'}), 404
+        
+        # 2. Log Transaction
+        c.execute("INSERT INTO student_transactions (student_id, amount, date, mode, type, remarks) VALUES (?, ?, ?, ?, 'Payment', ?)",
+                  (student_id, amount, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), mode, remarks))
+        
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        print(f"Payment Error: {e}")
+        return jsonify({'error': str(e)}), 500
+
 # Initialize DB (Global - runs on gunicorn worker start)
-# Initialize DB (Global - runs on gunicorn worker start)
-if os.environ.get('FLASK_ENV') != 'testing':
-    init_db()
+@app.route('/api/staff', methods=['GET', 'POST', 'PUT', 'DELETE'])
+def manage_staff():
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        if request.method == 'GET':
+            c.execute("SELECT * FROM staff ORDER BY name")
+            rows = [dict(row) for row in c.fetchall()]
+            
+            # Enrich with balance info (similar to students)
+            # Staff balance logic: Total Food Cost (Transactions 'Food') - Total Paid (Transactions 'Payment' implied? Or just Ledger?)
+            # Actually, let's keep it simpler for now:
+            # We need to query staff_transactions to calculate balance.
+            # Balance = SUM(Amount where type='Food') - SUM(Amount where type='Payment')
+            # Warning: Optimization - Querying inside loop is slow. But for <100 staff it's fine.
+            
+            enriched = []
+            for s in rows:
+                c.execute("SELECT SUM(amount) FROM staff_transactions WHERE staff_id=? AND type='Food'", (s['id'],))
+                food_cost = c.fetchone()[0] or 0
+                
+                c.execute("SELECT SUM(amount) FROM staff_transactions WHERE staff_id=? AND type='Payment'", (s['id'],))
+                paid = c.fetchone()[0] or 0
+                
+                s['balance'] = food_cost - paid
+                enriched.append(s)
+                
+            return jsonify(enriched)
+
+        if request.method == 'POST':
+            data = request.json
+            name = data.get('name')
+            dept = data.get('dept', '')
+            phone = data.get('phone', '')
+            c.execute("INSERT INTO staff (name, dept, phone, created_at) VALUES (?, ?, ?, ?)",
+                      (name, dept, phone, datetime.datetime.now().strftime("%Y-%m-%d")))
+            conn.commit()
+            return jsonify({'status': 'success'})
+
+        if request.method == 'PUT':
+            data = request.json
+            c.execute("UPDATE staff SET name=?, dept=?, phone=? WHERE id=?",
+                      (data['name'], data.get('dept'), data.get('phone'), data['id']))
+            conn.commit()
+            return jsonify({'status': 'success'})
+
+        if request.method == 'DELETE':
+            sid = request.args.get('id')
+            c.execute("DELETE FROM staff WHERE id=?", (sid,))
+            c.execute("DELETE FROM staff_transactions WHERE staff_id=?", (sid,))
+            conn.commit()
+            return jsonify({'status': 'success'})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+# --- API: Reports (Staff) ---
+@app.route('/api/reports/staff/<int:staff_id>')
+def get_staff_report(staff_id):
+    conn = get_db()
+    c = conn.cursor()
+    
+    # 1. Staff Details
+    c.execute("SELECT * FROM staff WHERE id=?", (staff_id,))
+    staff = c.fetchone()
+    if not staff:
+        conn.close()
+        return jsonify({'error': 'Staff not found'}), 404
+    staff_data = dict(staff)
+    
+    # 2. Transactions (Food & Payments)
+    # Staff transactions are stored in 'staff_transactions' table
+    c.execute("SELECT * FROM staff_transactions WHERE staff_id=? ORDER BY date DESC", (staff_id,))
+    rows = c.fetchall()
+    
+    transactions = []
+    for r in rows:
+        transactions.append({
+            'id': r['id'],
+            'date': r['date'],
+            'type': r['type'], # 'Food' or 'Payment'
+            'amount': r['amount'],
+            'mode': r['mode'],
+            'remarks': r['remarks']
+        })
+        
+    # Calculate Balance
+    # Balance = Food - Paid
+    c.execute("SELECT SUM(amount) FROM staff_transactions WHERE staff_id=? AND type='Food'", (staff_id,))
+    food_total = c.fetchone()[0] or 0
+    
+    c.execute("SELECT SUM(amount) FROM staff_transactions WHERE staff_id=? AND type='Payment'", (staff_id,))
+    paid_total = c.fetchone()[0] or 0
+    
+    staff_data['balance'] = food_total - paid_total
+    staff_data['total_food'] = food_total
+    staff_data['total_paid'] = paid_total
+
+    conn.close()
+    
+    return jsonify({
+        'staff': staff_data,
+        'transactions': transactions
+    })
 
 if __name__ == '__main__':
+    # Initialize DB on startup
+    init_db()
+    
     port = int(os.environ.get('PORT', 8000))
     debug_mode = os.environ.get('FLASK_ENV') == 'development'
     print(f"Starting Flask Server on port {port}...")

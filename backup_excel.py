@@ -25,7 +25,7 @@ def update_excel_sheet():
         ws.title = "Hostel Students"
         
         # Headers
-        headers = ['ID', 'Name', 'Roll No', 'Dept', 'Payment Status', 'Payment Mode', 'Amount Paid']
+        headers = ['ID', 'Name', 'Regd No', 'Dept', 'Payment Status', 'Payment Mode', 'Amount Paid']
         ws.append(headers)
         
         # Style Headers
@@ -37,7 +37,7 @@ def update_excel_sheet():
             ws.append([
                 row['id'],
                 row['name'],
-                row['roll'],
+                row['regd_no'],
                 row['dept'],
                 row['payment_status'],
                 row['payment_mode'],
