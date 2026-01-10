@@ -137,8 +137,8 @@
                 <div class="card">
                     <h4>Monthly Report</h4>
                     <p>Aggregated bill for all hostel students.</p>
-                    <div style="display: flex; gap: 5px; margin-bottom: 10px;">
-                        <input type="number" id="report-year" placeholder="YYYY" style="width: 80px;" value="2025">
+                    <div style="display: flex; gap: 5px; margin-bottom: 5px;">
+                        <input type="number" id="report-year" placeholder="YYYY" style="width: 100px;" value="2025">
                         <select id="report-month" style="flex: 1;">
                             <option value="01">Jan</option>
                             <option value="02">Feb</option>
@@ -153,6 +153,12 @@
                             <option value="11">Nov</option>
                             <option value="12">Dec</option>
                         </select>
+                    </div>
+                    <div style="display: flex; gap: 5px; margin-bottom: 10px; align-items: center;">
+                        <span style="font-size: 0.8em; font-weight: bold;">OR Range:</span>
+                        <input type="date" id="report-start-date" style="flex: 1; padding: 5px;">
+                        <span style="font-size: 0.8em;">to</span>
+                        <input type="date" id="report-end-date" style="flex: 1; padding: 5px;">
                     </div>
                     <button onclick="viewMonthlyReport()" class="primary-btn" style="width: 100%;">View Report</button>
                     <!-- Container for results? Or Modal? Modal is cleaner -->
@@ -182,38 +188,9 @@
                 <h3>Student Report</h3>
                 <input type="hidden" id="report-student-id">
 
-                <div class="filter-bar"
-                    style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; background: #eef; padding: 10px; border-radius: 5px;">
-                    <!-- Date Range (New) -->
-                    <label>From:</label>
-                    <input type="date" id="std-report-start" class="admin-input" style="padding: 5px;">
-                    <label>To:</label>
-                    <input type="date" id="std-report-end" class="admin-input" style="padding: 5px;">
-
-                    <span style="border-left: 2px solid #ccc; height: 20px; margin: 0 5px;"></span>
-
-                    <!-- Existing Month/Year -->
-                    <label>Or Month:</label>
-                    <select id="std-report-month" style="padding: 5px;">
-                        <option value="">All Months</option>
-                        <option value="01">Jan</option>
-                        <option value="02">Feb</option>
-                        <option value="03">Mar</option>
-                        <option value="04">Apr</option>
-                        <option value="05">May</option>
-                        <option value="06">Jun</option>
-                        <option value="07">Jul</option>
-                        <option value="08">Aug</option>
-                        <option value="09">Sep</option>
-                        <option value="10">Oct</option>
-                        <option value="11">Nov</option>
-                        <option value="12">Dec</option>
-                    </select>
-                    <input type="number" id="std-report-year" value="2025" style="width: 70px; padding: 5px;">
-
-                    <button onclick="filterStudentReport()" class="primary-btn" style="padding: 5px 15px;">Go</button>
-                    <button onclick="resetStudentReport()" class="secondary-btn"
-                        style="padding: 5px 10px;">Reset</button>
+                <div class="filter-bar" style="margin-bottom: 10px;">
+                    <button onclick="window.openFilterModal()" class="primary-btn">Filter Report</button>
+                    <button onclick="window.clearFilter()" class="secondary-btn">Reset</button>
                 </div>
 
                 <div id="report-meta"></div>
@@ -254,8 +231,11 @@
                     </table>
                 </div>
             </div>
-            <button onclick="document.getElementById('report-modal').classList.add('hidden')" class="primary-btn"
-                style="margin-top: 10px;">Close</button>
+            <div style="margin-top: 10px; display: flex; justify-content: space-between;">
+                <button onclick="document.getElementById('report-modal').classList.add('hidden')"
+                    class="primary-btn">Close</button>
+                <button onclick="window.resetStudentHistory()" class="danger-btn">Clear History (Reset)</button>
+            </div>
         </div>
     </div>
 
@@ -336,7 +316,23 @@
         </div>
     </div>
 
-    <script src="js/app.js?v=8"></script>
+    <!-- Filter Modal -->
+    <div id="filter-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 400px; text-align: center;">
+            <span class="close" onclick="document.getElementById('filter-modal').classList.add('hidden')">&times;</span>
+            <h3>Filter Report</h3>
+            <label style="display:block; text-align:left; margin-top:10px;">Start Date:</label>
+            <input type="date" id="filter-start-date" style="padding: 10px; width: 100%;">
+
+            <label style="display:block; text-align:left; margin-top:10px;">End Date:</label>
+            <input type="date" id="filter-end-date" style="padding: 10px; width: 100%;">
+
+            <button onclick="applyFilter()" class="primary-btn" style="width: 100%; margin-top: 20px;">Apply
+                Filter</button>
+        </div>
+    </div>
+
+    <script src="js/app.js?v=9"></script>
 </body>
 
 </html>

@@ -318,6 +318,28 @@ def manage_students():
         conn.close()
         return jsonify({'status': 'success'})
 
+@app.route('/api/students/reset', methods=['POST'])
+def reset_student_history():
+    data = request.json
+    s_id = data.get('student_id')
+    if not s_id: return jsonify({'error': 'Student ID required'}), 400
+    
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        # Clear Data
+        c.execute("DELETE FROM meals WHERE student_id=?", (s_id,))
+        c.execute("DELETE FROM student_transactions WHERE student_id=?", (s_id,))
+        # Reset Balance
+        c.execute("UPDATE students SET remaining_amount=0, amount_paid=0, payment_status='Unpaid' WHERE id=?", (s_id,))
+        conn.commit()
+        return jsonify({'status': 'success', 'message': 'History cleared'})
+    except Exception as e:
+        print(f"Reset Error: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
 @app.route('/api/students/pay', methods=['POST'])
 def pay_student_fees():
     data = request.json
@@ -474,6 +496,15 @@ def view_bill(bill_no):
     
     details = json.loads(row['details'])
     
+    # Date Format DD-MM-YYYY
+    try:
+        raw_date = row['date'] # YYYY-MM-DD HH:MM:SS
+        date_part = raw_date.split(' ')[0]
+        y, m, d = date_part.split('-')
+        fmt_date = f"{d}-{m}-{y}"
+    except:
+        fmt_date = row['date']
+    
     html = f"""
     <html>
     <head>
@@ -493,7 +524,7 @@ def view_bill(bill_no):
         <div class="bill-box">
             <h2>GATE Central Canteen</h2>
             <div class="meta">
-                Date: {row['date']}<br>
+                Date: {fmt_date}<br>
                 Bill No: {bill_no}
             </div>
             <hr>
@@ -697,73 +728,143 @@ def get_student_report(student_id):
     })
 
 @app.route('/api/transactions', methods=['DELETE'])
+# Helper for deletion logic (shared)
+def delete_transaction_logic(c, t_id):
+    # 1. Fetch Transaction
+    c.execute("SELECT * FROM student_transactions WHERE id=?", (t_id,))
+    row = c.fetchone()
+    if not row: return False, 'Transaction not found'
+    tx = dict(row)
+    
+    s_id = tx['student_id']
+    amount = tx['amount']
+    type_ = tx.get('type', 'Payment')
+    date_str = tx.get('date') # YYYY-MM-DD HH:MM:SS
+    
+    # 2. Reverse Balance
+    c.execute("SELECT remaining_amount, amount_paid FROM students WHERE id=?", (s_id,))
+    student = c.fetchone()
+    if not student: return False, 'Student not found'
+    
+    curr_remaining = student['remaining_amount'] or 0
+    curr_paid = student['amount_paid'] or 0
+    
+    if type_ == 'Payment':
+        # Reversing a Payment: Increase Debt, Decrease Paid
+        new_remaining = curr_remaining + amount
+        new_paid = curr_paid - amount
+    elif type_ == 'Food':
+        # Reversing Food: Decrease Debt, Paid unaffected
+        new_remaining = curr_remaining - amount
+        new_paid = curr_paid
+        
+        # --- MEAL SYNC ---
+        remarks = tx.get('remarks', '') or ''
+        remarks_lower = remarks.lower()
+        
+        meal_type_found = None
+        if 'breakfast' in remarks_lower: meal_type_found = 'breakfast'
+        elif 'lunch' in remarks_lower: meal_type_found = 'lunch'
+        elif 'dinner' in remarks_lower: meal_type_found = 'dinner'
+        
+        if meal_type_found and date_str:
+            try:
+                meal_date = date_str.split(' ')[0].strip()
+                print(f"Reversing meal: Student {s_id}, Date {meal_date}, Type {meal_type_found}")
+                c.execute(f"UPDATE meals SET {meal_type_found}=0 WHERE student_id=? AND date=?", 
+                          (s_id, meal_date))
+            except Exception as e:
+                print(f"Error parsing date for meal reversal: {e}")
+            
+    else:
+        new_remaining = curr_remaining + amount
+        new_paid = curr_paid - amount
+
+    # 3. Update Student
+    new_status = 'Unpaid'
+    if new_remaining <= 0:
+        new_status = 'Paid'
+    elif new_paid > 0:
+        new_status = 'Partial'
+        
+    c.execute("UPDATE students SET remaining_amount=?, amount_paid=?, payment_status=? WHERE id=?", 
+              (new_remaining, new_paid, new_status, s_id))
+    
+    # 4. Delete Transaction
+    c.execute("DELETE FROM student_transactions WHERE id=?", (t_id,))
+    return True, 'Transaction reversed'
+
+@app.route('/api/transactions', methods=['DELETE'])
 def delete_transaction():
     t_id = request.args.get('id')
     if not t_id: return jsonify({'error': 'Missing ID'}), 400
     
     conn = get_db()
     c = conn.cursor()
-    
     try:
-        # 1. Fetch Transaction
-        c.execute("SELECT * FROM student_transactions WHERE id=?", (t_id,))
-        row = c.fetchone()
-        if not row: return jsonify({'error': 'Transaction not found'}), 404
-        tx = dict(row)
-        
-        # 2. Validation (Only allow deleting Payments for now, or careful handling of Food)
-        # We only safe delete 'Payment' types to reverse debt. 
-        # If we delete 'Food' (account), we need to reduce debt.
-        
-        s_id = tx['student_id']
-        amount = tx['amount']
-        type_ = tx.get('type', 'Payment')
-        
-        # 3. Reverse Balance
-        c.execute("SELECT remaining_amount, amount_paid FROM students WHERE id=?", (s_id,))
-        student = c.fetchone()
-        if not student: return jsonify({'error': 'Student not found'}), 404
-        
-        curr_remaining = student['remaining_amount'] or 0
-        curr_paid = student['amount_paid'] or 0
-        
-        if type_ == 'Payment':
-            # It was a payment (reduced debt). Reversing it means:
-            # Increase Debt (Remaining)
-            # Decrease Amount Paid
-            new_remaining = curr_remaining + amount
-            new_paid = curr_paid - amount
-        elif type_ == 'Food':
-            # It was a food charge (increased debt). Reversing it means:
-            # Decrease Debt
-            # Amount Paid unaffected
-            new_remaining = curr_remaining - amount
-            new_paid = curr_paid
+        success, msg = delete_transaction_logic(c, t_id)
+        if success:
+            conn.commit()
+            return jsonify({'status': 'success', 'message': msg})
         else:
-            # Fallback if type is missing (legacy) - assume Payment if it's in this table and not food?
-            # Safest to assume Payment if we stick to the UI button only appearing for Payments
-            new_remaining = curr_remaining + amount
-            new_paid = curr_paid - amount
-
-        # 4. Update Student
-        # Recalculate status
-        new_status = 'Unpaid'
-        if new_remaining <= 0:
-            new_status = 'Paid'
-        elif new_paid > 0:
-            new_status = 'Partial'
-            
-        c.execute("UPDATE students SET remaining_amount=?, amount_paid=?, payment_status=? WHERE id=?", 
-                  (new_remaining, new_paid, new_status, s_id))
-        
-        # 5. Delete Transaction
-        c.execute("DELETE FROM student_transactions WHERE id=?", (t_id,))
-        conn.commit()
-        
-        return jsonify({'status': 'success', 'message': 'Transaction reversed'})
-        
+            return jsonify({'error': msg}), 404
     except Exception as e:
         print(f"Delete Tx Error: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/meals', methods=['DELETE'])
+def delete_meal():
+    s_id = request.args.get('student_id')
+    date = request.args.get('date') # YYYY-MM-DD
+    meal_type = request.args.get('type') # breakfast, lunch, dinner
+    
+    if not s_id or not date or not meal_type:
+        return jsonify({'error': 'Missing params'}), 400
+        
+    meal_type = meal_type.lower()
+    if meal_type not in ['breakfast', 'lunch', 'dinner']:
+        return jsonify({'error': 'Invalid meal type'}), 400
+
+    conn = get_db()
+    conn.execute("PRAGMA foreign_keys = 1")
+    c = conn.cursor()
+    
+    try:
+        # 1. Try to find corresponding transaction
+        # Search for Food txn on this date with matching remark
+        # Date match must be generous (starts with YYYY-MM-DD)
+        date_pattern = f"{date}%"
+        # Remark should contain meal type (Title case usually)
+        remark_pattern = f"%{meal_type}%" 
+        
+        # We also need to check 'Food' type
+        query = "SELECT id FROM student_transactions WHERE student_id=? AND type='Food' AND date LIKE ? AND remarks LIKE ?"
+        
+        # We need to be careful with case sensitivity in LIKE? SQLite LIKE is case-insensitive for ASCII chars by default.
+        # But 'remarks' might be "Meal: Lunch" or just "Lunch".
+        c.execute(query, (s_id, date_pattern, remark_pattern))
+        row = c.fetchone()
+        
+        if row:
+            # Transaction found! Use logic to delete it (which also clears meal)
+            t_id = row[0]
+            print(f"Delete Meal: Found transaction {t_id}")
+            success, msg = delete_transaction_logic(c, t_id)
+            if not success:
+               # Fallback: Just clear meal if logic failed? No, logic handles failure.
+               pass
+        else:
+            # No transaction found (Stuck meal case). Just clear the meal record.
+            print(f"Delete Meal: No transaction found. Force clearing meal.")
+            c.execute(f"UPDATE meals SET {meal_type}=0 WHERE student_id=? AND date=?", (s_id, date))
+            
+        conn.commit()
+        return jsonify({'status': 'success'})
+        
+    except Exception as e:
+        print(f"Delete Meal Error: {e}")
         return jsonify({'error': str(e)}), 500
     finally:
         conn.close()
@@ -837,39 +938,52 @@ def backup_excel_route():
 def monthly_report():
     month = request.args.get('month')
     year = request.args.get('year')
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
     
-    if not month or not year:
-        return jsonify({'error': 'Month and Year required'}), 400
+    # Query construction
+    query = '''
+        SELECT s.name, s.regd_no, 
+               SUM(m.breakfast) as b_count, 
+               SUM(m.lunch) as l_count, 
+               SUM(m.dinner) as d_count
+        FROM meals m
+        JOIN students s ON m.student_id = s.id
+    '''
+    params = []
+    
+    if start_date and end_date:
+        query += " WHERE m.date >= ? AND m.date <= ?"
+        # Start date should be 00:00:00 and end date 23:59:59 effectively
+        # But our DB stores 'YYYY-MM-DD' for meals table usually?
+        # Let's check schema. Meals table 'date' is usually just YYYY-MM-DD from 'create_bill' logic?
+        # In student_transactions it is datetime. In meals it is date.
+        # Let's check verify_fix.py: INSERT INTO meals ... VALUES ... today (isoformat)
+        # So meals.date is YYYY-MM-DD.
+        params = [start_date, end_date]
         
+    elif month and year:
+        # Construct date pattern for LIKE query 'YYYY-MM-%'
+        month_str = str(month).zfill(2)
+        date_pattern = f"{year}-{month_str}-%"
+        query += " WHERE m.date LIKE ?"
+        params = [date_pattern]
+        
+    else:
+        return jsonify({'error': 'Month/Year OR Date Range required'}), 400
+        
+    query += " GROUP BY m.student_id ORDER BY s.name"
+    
     try:
         conn = get_db()
         c = conn.cursor()
         
-        # Construct date pattern for LIKE query 'YYYY-MM-%'
-        # Ensure month is 0-padded
-        month_str = str(month).zfill(2)
-        date_pattern = f"{year}-{month_str}-%"
-        
-        # Query: Aggregate meals per student for this month
-        # We need Student Name, Regd No, and summed meal counts
-        query = '''
-            SELECT s.name, s.regd_no, 
-                   SUM(m.breakfast) as b_count, 
-                   SUM(m.lunch) as l_count, 
-                   SUM(m.dinner) as d_count
-            FROM meals m
-            JOIN students s ON m.student_id = s.id
-            WHERE m.date LIKE ?
-            GROUP BY m.student_id
-            ORDER BY s.name
-        '''
-        
-        c.execute(query, (date_pattern,))
+        c.execute(query, tuple(params))
         rows = c.fetchall()
         
         report = []
         for r in rows:
-            # Calculate cost (B=20, L=40, D=40) - Hardcoded pricing for now as per project logic
+            # Calculate cost (B=20, L=40, D=40) - Hardcoded pricing
             b = r['b_count'] or 0
             l = r['l_count'] or 0
             d = r['d_count'] or 0

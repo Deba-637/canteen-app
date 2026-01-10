@@ -239,17 +239,9 @@
                 <h3>Student Report</h3>
                 <input type="hidden" id="report-student-id">
 
-                <div class="filter-bar"
-                    style="display: flex; gap: 5px; margin-bottom: 10px; padding: 10px; background: #eef; border-radius: 5px; align-items: center;">
-                    <label style="font-weight: bold;">From:</label>
-                    <input type="date" id="std-report-start" style="padding: 5px;">
-
-                    <label style="font-weight: bold;">To:</label>
-                    <input type="date" id="std-report-end" style="padding: 5px;">
-
-                    <button onclick="filterStudentReport()" class="primary-btn" style="padding: 5px 15px;">Go</button>
-                    <button onclick="resetStudentReport()" class="secondary-btn"
-                        style="padding: 5px 10px;">Reset</button>
+                <div class="filter-bar" style="margin-bottom: 10px;">
+                    <button onclick="window.openFilterModal()" class="primary-btn">Filter Report</button>
+                    <button onclick="window.clearFilter()" class="secondary-btn">Reset</button>
                 </div>
 
                 <div id="report-meta"></div>
@@ -295,7 +287,23 @@
         </div>
     </div>
 
-    <script src="js/app.js?v=9"></script>
+    <!-- Filter Modal -->
+    <div id="filter-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 400px; text-align: center;">
+            <span class="close" onclick="document.getElementById('filter-modal').classList.add('hidden')">&times;</span>
+            <h3>Filter Report</h3>
+            <label style="display:block; text-align:left; margin-top:10px;">Start Date:</label>
+            <input type="date" id="filter-start-date" style="padding: 10px; width: 100%;">
+
+            <label style="display:block; text-align:left; margin-top:10px;">End Date:</label>
+            <input type="date" id="filter-end-date" style="padding: 10px; width: 100%;">
+
+            <button onclick="applyFilter()" class="primary-btn" style="width: 100%; margin-top: 20px;">Apply
+                Filter</button>
+        </div>
+    </div>
+
+    <script src="js/app.js?v=10"></script>
 </body>
 
 </html>

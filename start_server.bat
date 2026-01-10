@@ -23,6 +23,7 @@ start /MIN "Canteen Print Service" cmd /k python print_service.py
 
 :: Start Web Server (in this window)
 ECHO Starting Web Server...
+set FLASK_ENV=development
 start "Canteen Web Server" python app.py
 
 :: Wait a moment for server to boot

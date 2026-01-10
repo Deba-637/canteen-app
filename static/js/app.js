@@ -9,6 +9,18 @@ document.addEventListener('DOMContentLoaded', () => {
         currentOperatorName = sessionStorage.getItem('canteen_op_user');
     }
 
+    // --- Helpers ---
+    window.formatDate = function (isoStr) {
+        if (!isoStr) return '-';
+        // Handle "YYYY-MM-DD HH:mm:ss" or "YYYY-MM-DD"
+        try {
+            const datePart = isoStr.split(' ')[0];
+            const [y, m, d] = datePart.split('-');
+            if (!y || !m || !d) return isoStr;
+            return `${d}-${m}-${y}`;
+        } catch (e) { return isoStr; }
+    }
+
     // --- Page Specific Init ---
     const path = window.location.pathname;
     if (path === '/admin') {
@@ -425,12 +437,16 @@ window.viewStudentReport = async function (id, month = '', year = '', startDate 
             mealTbody.innerHTML = '<tr><td colspan="4">No meals recorded.</td></tr>';
         } else {
             data.meals.forEach(m => {
+                const bBtn = m.breakfast ? `Yes <button onclick="window.deleteMeal(${std.id}, '${m.date}', 'breakfast')" class="danger-btn" style="padding: 0 4px; font-size: 0.7em;">&times;</button>` : '-';
+                const lBtn = m.lunch ? `Yes <button onclick="window.deleteMeal(${std.id}, '${m.date}', 'lunch')" class="danger-btn" style="padding: 0 4px; font-size: 0.7em;">&times;</button>` : '-';
+                const dBtn = m.dinner ? `Yes <button onclick="window.deleteMeal(${std.id}, '${m.date}', 'dinner')" class="danger-btn" style="padding: 0 4px; font-size: 0.7em;">&times;</button>` : '-';
+
                 mealTbody.innerHTML += `
                     <tr>
-                        <td>${m.date}</td>
-                        <td>${m.breakfast ? 'Yes' : '-'}</td>
-                        <td>${m.lunch ? 'Yes' : '-'}</td>
-                        <td>${m.dinner ? 'Yes' : '-'}</td>
+                        <td>${formatDate(m.date)}</td>
+                        <td>${bBtn}</td>
+                        <td>${lBtn}</td>
+                        <td>${dBtn}</td>
                     </tr>
                 `;
             });
@@ -447,14 +463,11 @@ window.viewStudentReport = async function (id, month = '', year = '', startDate 
             // For Payment: Date | - | Fee Payment | Amount | Mode
             data.transactions.forEach(t => {
                 const isPay = t.type === 'Payment';
-                // Only show delete button if it has an ID (real transaction vs aggregated bill) and is a Payment
-                // Actually our logic handles Food from student_transactions too now, but let's stick to cleaning payments first.
-                // Or better: valid for any 'student_transactions' entry (which has ID).
                 const canDelete = t.id !== undefined;
 
                 moneyTbody.innerHTML += `
                     <tr style="background-color: ${isPay ? '#e8f8f5' : 'inherit'}">
-                        <td>${t.date}</td>
+                        <td>${formatDate(t.date)}</td>
                         <td>${t.type === 'Food' ? '#' : ''}</td>
                         <td>${t.item}</td>
                         <td style="color: ${t.color}; font-weight: bold;">₹${t.amount}</td>
@@ -477,34 +490,29 @@ window.viewStudentReport = async function (id, month = '', year = '', startDate 
     }
 }
 
-window.filterStudentReport = function () {
-    // Check for Date Range Inputs (Operator/Admin)
-    const start = document.getElementById('std-report-start') ? document.getElementById('std-report-start').value : '';
-    const end = document.getElementById('std-report-end') ? document.getElementById('std-report-end').value : '';
-
-    // Check for Month/Year Inputs (Admin)
-    const month = document.getElementById('std-report-month') ? document.getElementById('std-report-month').value : '';
-    const year = document.getElementById('std-report-year') ? document.getElementById('std-report-year').value : '';
-
-    // Logic: If user touched dates, use dates.
-    if (start || end) {
-        if (start && end && start > end) return alert("Start Date must be before End Date");
-        // Pass both; backend handles empty strings as open-ended ranges
-        viewStudentReport(null, '', '', start, end);
-    } else if (month || year) {
-        if (month && !year) return alert("Please enter a year");
-        if (!month && year) return alert("Please select a month");
-        viewStudentReport(null, month, year);
-    } else {
-        alert("Please select dates or month/year to filter.");
-    }
+// Open Filter Modal
+window.openFilterModal = function () {
+    document.getElementById('filter-modal').classList.remove('hidden');
 }
 
-window.resetStudentReport = function () {
-    if (document.getElementById('std-report-start')) document.getElementById('std-report-start').value = "";
-    if (document.getElementById('std-report-end')) document.getElementById('std-report-end').value = "";
-    if (document.getElementById('std-report-month')) document.getElementById('std-report-month').value = "";
-    if (document.getElementById('std-report-year')) document.getElementById('std-report-year').value = "2025";
+// Apply Filter from Modal
+window.applyFilter = function () {
+    const start = document.getElementById('filter-start-date').value;
+    const end = document.getElementById('filter-end-date').value;
+
+    if (start && end && start > end) {
+        return alert("Start Date must be before End Date");
+    }
+
+    document.getElementById('filter-modal').classList.add('hidden');
+    viewStudentReport(null, '', '', start, end);
+}
+
+// Clear Filter
+window.clearFilter = function () {
+    document.getElementById('filter-start-date').value = '';
+    document.getElementById('filter-end-date').value = '';
+    document.getElementById('filter-modal').classList.add('hidden');
     viewStudentReport(null);
 }
 
@@ -530,6 +538,47 @@ window.deleteTransaction = async function (txId, studentId) {
             }
         } catch (e) {
             alert("Network Error: " + e);
+        }
+    }
+}
+
+window.deleteMeal = async function (sId, date, type) {
+    if (confirm(`Remove ${type} for ${date}?\nThis will remove the transaction if found, or just clear the record.`)) {
+        try {
+            const res = await fetch(`/api/meals?student_id=${sId}&date=${date}&type=${type}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.status === 'success') {
+                // Refresh
+                viewStudentReport(sId);
+                loadStudents();
+            } else {
+                alert("Error: " + data.error);
+            }
+        } catch (e) { alert("Network Error: " + e); }
+    }
+}
+
+window.resetStudentHistory = async function () {
+    const sId = document.getElementById('report-student-id').value;
+    if (!sId) return;
+
+    if (confirm("DANGER: This will delete ALL meals and transactions for this student and reset their balance to 0.\n\nAre you sure exactly?")) {
+        if (confirm("Double Check: This cannot be undone.")) {
+            try {
+                const res = await fetch('/api/students/reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ student_id: sId })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    alert("History Cleared.");
+                    viewStudentReport(sId);
+                    loadStudents();
+                } else {
+                    alert("Error: " + data.error);
+                }
+            } catch (e) { alert("Network Error: " + e); }
         }
     }
 }
@@ -1149,14 +1198,27 @@ let currentMonthlyData = [];
 window.viewMonthlyReport = async function () {
     const month = document.getElementById('report-month').value;
     const year = document.getElementById('report-year').value;
+    const start = document.getElementById('report-start-date').value;
+    const end = document.getElementById('report-end-date').value;
 
-    if (!year) return alert("Enter Year");
+    let queryParams = '';
+    let reportTitle = '';
+
+    if (start && end) {
+        if (start > end) return alert("Start Date cannot be after End Date");
+        queryParams = `start_date=${start}&end_date=${end}`;
+        reportTitle = `Report: ${formatDate(start)} to ${formatDate(end)}`;
+    } else {
+        if (!year) return alert("Enter Year or Date Range");
+        queryParams = `month=${month}&year=${year}`;
+        reportTitle = `Monthly Report: ${month}/${year}`;
+    }
 
     try {
         const btn = document.querySelector('button[onclick="viewMonthlyReport()"]');
         if (btn) { btn.textContent = "Loading..."; btn.disabled = true; }
 
-        const res = await fetch(`/api/reports/monthly?month=${month}&year=${year}`);
+        const res = await fetch(`/api/reports/monthly?${queryParams}`);
         const data = await res.json();
 
         if (btn) { btn.textContent = "View Report"; btn.disabled = false; }
@@ -1187,14 +1249,14 @@ window.viewMonthlyReport = async function () {
                     // Total Row
                     tbody.innerHTML += `
                         <tr style="background-color: #f0f0f0; font-weight: bold;">
-                            <td colspan="5" style="text-align: right;">Total For Month:</td>
+                            <td colspan="5" style="text-align: right;">Total For Period:</td>
                             <td>₹${totalBill}</td>
                         </tr>
                     `;
                 }
             }
 
-            document.getElementById('monthly-report-title').textContent = `Monthly Report: ${month}/${year}`;
+            document.getElementById('monthly-report-title').textContent = reportTitle;
             document.getElementById('monthly-report-modal').classList.remove('hidden');
         } else {
             alert("Error: " + data.error);
